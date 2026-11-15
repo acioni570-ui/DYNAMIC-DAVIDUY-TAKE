@@ -32,7 +32,19 @@ Prototipo de asistencia de entrada para Geometry Dash 2.2081 en Windows con Geod
 
 <!-- coderabbit-ai-generated-section:v1:7ec8df5fc7cb621f32880c1e37bc186d6d7db2d25d2c17a78d3e29d338606048 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:245c43172edfc228355c7ca526cbb857c084735490f163c8274d16760c78f402 -->
+
+## Cambios de la versión 0.6.1
+
+- El límite compartido de predicción por fotograma pasa de 4 ms a 0 por defecto en instalaciones nuevas, para permitir más tiempo a cada búsqueda. El límite individual de 12 ms sigue activo y puede causar tirones. Geode puede conservar un valor configurado anteriormente: revisa **Prediction budget per frame (ms)** y cambia 4 a 0 si quieres quitar el límite compartido.
+- Los tipos de los objetos de interacción y sus copias privadas se comprueban una vez por objeto, en lugar de repetir esas comprobaciones en cada paso o candidato. Sus campos, posición y activaciones siguen copiándose y reiniciándose en cada candidato.
+- El resultado depende de las interacciones presentes en el nivel. No se ha medido la mejora de FPS ni la cantidad de predicciones dentro del juego.
+
 ## Cambios de la versión 0.6.0
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 - Nuevo **Prediction budget per frame (ms)**: todos los clics de un fotograma comparten 4 ms de búsqueda por defecto, además del límite individual. Puede completar menos correcciones que el comportamiento anterior. Usa 0 para recuperar el presupuesto independiente por entrada. Es un límite cooperativo: una operación nativa o su limpieza puede sobrepasarlo.
 - Las teclas F6/F7 y los ajustes de interfaz se consultan una vez por fotograma renderizado. La entrega y validación de entradas pendientes conserva su frecuencia de física.

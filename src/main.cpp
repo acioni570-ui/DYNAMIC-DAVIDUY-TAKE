@@ -30,6 +30,7 @@
 #include "simulation_safety.hpp"
 #include "scratch_buffers.hpp"
 #include "frame_budget.hpp"
+#include "object_types.hpp"
 
 using namespace geode::prelude;
 namespace {
@@ -80,7 +81,13 @@ struct State {
     PlayLayer* layer = nullptr;
     CCNode* holder = nullptr;
     PlayerObject* ghost = nullptr;
-    struct ObjectCopy { Ref<GameObject> object; std::uint64_t generation = 0; };
+    using Types = dynamic::ObjectTypes<EffectGameObject, EnhancedGameObject, RingObject, DashRingObject>;
+    struct ObjectCopy {
+        Ref<GameObject> object;
+        std::uint64_t generation = 0;
+        std::optional<Types> originalTypes;
+        std::optional<Types> copyTypes;
+    };
     std::unordered_map<GameObject*, ObjectCopy> copies;
     std::unordered_set<GameObject*> scratchObjects;
     std::vector<GameObject*> activeCopies;
@@ -259,8 +266,17 @@ void ensureGhost(PlayLayer* layer) {
 // Keep activation state on private objects. Native ring/pad physics may mark
 // an object activated, claim its touch, or animate it; none of those writes may
 // reach a real level object. Copies are reset once for each candidate.
-GameObject* interactionCopy(GameObject* original) {
+State::Types inspectObjectTypes(GameObject* object) {
+    return State::Types::inspect(object, []<typename T>(GameObject* value) {
+        return typeinfo_cast<T*>(value);
+    });
+}
+State::ObjectCopy& objectEntry(GameObject* original) {
     auto& entry = state.copies[original];
+    if (!entry.originalTypes) entry.originalTypes = inspectObjectTypes(original);
+    return entry;
+}
+GameObject* interactionCopy(GameObject* original, State::ObjectCopy& entry) {
     if (!entry.object) {
         auto* owners = state.ghost ? static_cast<CCArray*>(
             state.ghost->getUserObject("dynamicassist.practice/private-copies")) : nullptr;
@@ -271,6 +287,7 @@ GameObject* interactionCopy(GameObject* original) {
         if (entry.object) {
             owners->addObject(entry.object.data());
             state.scratchObjects.insert(entry.object.data());
+            entry.copyTypes = inspectObjectTypes(entry.object.data());
         }
     }
     auto* copy = entry.object.data();
@@ -293,16 +310,16 @@ GameObject* interactionCopy(GameObject* original) {
     copy->m_hasNoEffects = true;
     copy->m_hasNoParticles = true;
     copy->setVisible(false);
-    if (auto* src = typeinfo_cast<EffectGameObject*>(original)) {
-        auto* dst = typeinfo_cast<EffectGameObject*>(copy);
+    if (auto* src = entry.originalTypes->effect) {
+        auto* dst = entry.copyTypes->effect;
         if (!dst) return nullptr;
         dst->m_gravityValue = src->m_gravityValue;
         dst->m_gravityMod = src->m_gravityMod;
         dst->m_isReverse = src->m_isReverse;
         dst->m_targetGroupID = src->m_targetGroupID;
     }
-    if (auto* src = typeinfo_cast<EnhancedGameObject*>(original)) {
-        auto* dst = typeinfo_cast<EnhancedGameObject*>(copy);
+    if (auto* src = entry.originalTypes->enhanced) {
+        auto* dst = entry.copyTypes->enhanced;
         if (!dst) return nullptr;
         dst->m_isMultiActivate = src->m_isMultiActivate;
         dst->m_isNoMultiActivate = src->m_isNoMultiActivate;
@@ -310,14 +327,14 @@ GameObject* interactionCopy(GameObject* original) {
         dst->m_activatedByPlayer1 = src->m_activatedByPlayer1;
         dst->m_activatedByPlayer2 = src->m_activatedByPlayer2;
     }
-    if (auto* src = typeinfo_cast<RingObject*>(original)) {
-        auto* dst = typeinfo_cast<RingObject*>(copy);
+    if (auto* src = entry.originalTypes->ring) {
+        auto* dst = entry.copyTypes->ring;
         if (!dst) return nullptr;
         dst->m_claimTouch = src->m_claimTouch;
         dst->m_isSpawnOnly = src->m_isSpawnOnly;
     }
-    if (auto* src = typeinfo_cast<DashRingObject*>(original)) {
-        auto* dst = typeinfo_cast<DashRingObject*>(copy);
+    if (auto* src = entry.originalTypes->dash) {
+        auto* dst = entry.copyTypes->dash;
         if (!dst) return nullptr;
         dst->m_dashSpeed = src->m_dashSpeed;
         dst->m_endBoost = src->m_endBoost;
@@ -327,6 +344,9 @@ GameObject* interactionCopy(GameObject* original) {
     }
     entry.generation = state.generation;
     return copy;
+}
+GameObject* interactionCopy(GameObject* original) {
+    return interactionCopy(original, objectEntry(original));
 }
 
 void clearLogs(PlayerObject* p) {
@@ -641,7 +661,8 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             auto vehicle = dynamic::portalVehicle(type);
             auto speed = type == GameObjectType::Modifier ? dynamic::portalSpeed(object->m_objectID) : 0.f;
             if (dynamic::nativeOrbOrPad(type)) {
-                auto* effect = typeinfo_cast<EffectGameObject*>(object);
+                auto& entry = objectEntry(object);
+                auto* effect = entry.originalTypes->effect;
                 if (effect && effect->m_targetGroupID != 0 &&
                     object->getObjectRect().intersectsRect(player->getObjectRect())) {
                     state.uncertain = true; state.issue = SimulationIssue::activation;
@@ -649,7 +670,7 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
                     state.issueObjectType = static_cast<int>(type);
                     return;
                 }
-                auto* copy = interactionCopy(object);
+                auto* copy = interactionCopy(object, entry);
                 if (copy) filtered.push_back(copy);
                 else { state.uncertain = true; state.issue = SimulationIssue::object;
                     state.issueObjectID = object->m_objectID; state.issueObjectType = static_cast<int>(type); }
