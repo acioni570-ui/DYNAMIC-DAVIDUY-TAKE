@@ -27,6 +27,7 @@
 #include "mode_policy.hpp"
 #include "physics_snapshot.hpp"
 #include "simulation_safety.hpp"
+#include "scratch_buffers.hpp"
 
 using namespace geode::prelude;
 namespace {
@@ -81,6 +82,7 @@ struct State {
     std::unordered_map<GameObject*, ObjectCopy> copies;
     std::unordered_set<GameObject*> scratchObjects;
     std::vector<GameObject*> activeCopies;
+    dynamic::ScratchBuffers<gd::vector<GameObject*>> collisionBuffers;
     std::unordered_set<GameObject*> activatedPortals;
     std::uint64_t generation = 0;
     Ref<PlayerCheckpoint> checkpoint;
@@ -598,7 +600,8 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
     void collisionCheckObjects(PlayerObject* player, gd::vector<GameObject*>* objects, int count, float dt) {
         if (!state.simulating || player != state.ghost || !objects)
             return GJBaseGameLayer::collisionCheckObjects(player, objects, count, dt);
-        gd::vector<GameObject*> filtered;
+        auto buffer = state.collisionBuffers.acquire();
+        auto& filtered = buffer.get();
         auto limit = std::max(0, std::min<int>(count, static_cast<int>(objects->size())));
         filtered.reserve(static_cast<std::size_t>(std::min(limit, 64)));
         for (int i = 0; i < limit; ++i) {
@@ -607,10 +610,12 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             auto type = object->m_objectType;
             if (type == GameObjectType::Modifier && dynamic::colorOnlyTrigger(object->m_objectID)) continue;
             auto category = dynamic::collisionCategory(type);
-            if (category == dynamic::CollisionCategory::slope) {
+            if (category == dynamic::CollisionCategory::slope ||
+                category == dynamic::CollisionCategory::geometry) {
                 filtered.push_back(object);
                 continue;
             }
+            if (category == dynamic::CollisionCategory::decoration) continue;
             if (layerDualInteractionUnsupported(type) &&
                 object->getObjectRect().intersectsRect(player->getObjectRect())) {
                 state.uncertain = true; state.issue = SimulationIssue::object;
@@ -659,8 +664,6 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
                     }
                     if (speed > 0.f) player->m_playerSpeed = speed;
                 }
-            } else if (category == dynamic::CollisionCategory::geometry) {
-                filtered.push_back(object);
             } else if (category == dynamic::CollisionCategory::unsupported &&
                        object->getObjectRect().intersectsRect(player->getObjectRect())) {
                 state.uncertain = true;
@@ -749,19 +752,19 @@ class $modify(DynamicPlayer, PlayerObject) {
             if (state.displayedWindow != displayedWindow) state.lastResult = "Esperando clic";
             if (state.displayedWindow != displayedWindow ||
                 state.displayedControls != Mod::get()->getSettingValue<bool>("show-controls")) updateControls();
-            auto window = dynamic::clampWindow(Mod::get()->getSettingValue<int64_t>("window"));
-            auto* pendingPlayer = state.pendingPlayer1 ? layer->m_player1 : layer->m_player2;
-            auto* pendingOther = state.pendingPlayer1 ? layer->m_player2 : layer->m_player1;
-            auto context = predictionContext(pendingPlayer, layer, window > 0);
-            if (!state.pending.empty() &&
-                (!dynamic::compatibleTickDuration(state.pendingTickDt, state.tickDt) ||
-                 context.dual != state.pendingDual ||
-                 (context.dual && layer->m_levelSettings &&
-                  layer->m_levelSettings->m_twoPlayerMode != state.pendingSeparateControls) ||
-                 (context.dual && predictionContext(pendingOther, layer, true).vehicle != state.pendingSecondVehicle) ||
-                 dynamic::pendingInvalidated(context, state.pendingVehicle) ||
-                 dynamic::pendingExceedsWindow(state.pendingDelay, window)))
-                flush(layer);
+            if (!state.pending.empty()) {
+                auto* pendingPlayer = state.pendingPlayer1 ? layer->m_player1 : layer->m_player2;
+                auto* pendingOther = state.pendingPlayer1 ? layer->m_player2 : layer->m_player1;
+                auto context = predictionContext(pendingPlayer, layer, displayedWindow > 0);
+                if (!dynamic::compatibleTickDuration(state.pendingTickDt, state.tickDt) ||
+                    context.dual != state.pendingDual ||
+                    (context.dual && layer->m_levelSettings &&
+                     layer->m_levelSettings->m_twoPlayerMode != state.pendingSeparateControls) ||
+                    (context.dual && predictionContext(pendingOther, layer, true).vehicle != state.pendingSecondVehicle) ||
+                    dynamic::pendingInvalidated(context, state.pendingVehicle) ||
+                    dynamic::pendingExceedsWindow(state.pendingDelay, displayedWindow))
+                    flush(layer);
+            }
             while (auto event = state.pending.pop(state.tick)) forwardQueued(layer, *event, "scheduled");
             if (state.pending.empty()) {
                 state.pendingDelay = 0;
