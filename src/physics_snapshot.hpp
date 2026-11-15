@@ -26,6 +26,7 @@ void copyGroundAndVelocityState(Player& dst, Player const& src) {
     COPY_FIELD(m_isAccelerating); COPY_FIELD(m_fixRobotJump);
     COPY_FIELD(m_maybeIsBoosted); COPY_FIELD(m_accelerationOrSpeed);
     COPY_FIELD(m_lastGroundedPos); COPY_FIELD(m_stateHitHead);
+    COPY_FIELD(m_stateDartSlide);
     COPY_FIELD(m_stateFlipGravity); COPY_FIELD(m_stateBoostX);
     COPY_FIELD(m_stateBoostY); COPY_FIELD(m_stateForce);
     COPY_FIELD(m_stateForceVector); COPY_FIELD(m_affectedByForces);

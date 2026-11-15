@@ -14,6 +14,7 @@ struct Player {
     int m_totalTime = 0, m_gameModeChangedTime = 0, m_lastJumpTime = 0, m_lastLandTime = 0, m_lastFlipTime = 0;
     int m_lastSpiderFlipTime = 0, m_maybeIsFalling = 0, m_isAccelerating = 0, m_fixRobotJump = 0;
     int m_maybeIsBoosted = 0, m_accelerationOrSpeed = 0;
+    int m_stateDartSlide = 0;
     int m_lastGroundedPos = 0, m_stateHitHead = 0, m_stateFlipGravity = 0, m_stateBoostX = 0;
     int m_stateBoostY = 0, m_stateForce = 0, m_stateForceVector = 0, m_affectedByForces = 0;
     int m_controlsDisabled = 0, m_inputsLocked = 0;
@@ -35,6 +36,7 @@ int main() {
     real.m_accelerationOrSpeed = 5;
     real.m_holdingButtons[1] = true;
     real.m_enable22Changes = real.m_enableImpulseFix = real.m_gv0123 = true;
+    real.m_stateDartSlide = real.m_stateHitHead = 2;
     ghost.modeMarker = 17;
     dynamic::copyGroundAndVelocityState(ghost, real);
     assert(ghost.m_isOnGround && ghost.m_jumpBuffered);
@@ -42,6 +44,7 @@ int main() {
     assert(ghost.m_totalTime == 12 && ghost.m_gameModeChangedTime == 3 && ghost.m_holdingButtons.at(1));
     assert(ghost.m_maybeIsBoosted == 1 && ghost.m_accelerationOrSpeed == 5);
     assert(ghost.modeMarker == 17);
+    assert(ghost.m_stateDartSlide == 2 && ghost.m_stateHitHead == 2);
     assert(ghost.m_enable22Changes && ghost.m_enableImpulseFix && ghost.m_gv0123);
 
     // A second candidate must replace stale data from the first simulation.
@@ -49,6 +52,8 @@ int main() {
     dynamic::copyGroundAndVelocityState(ghost, real);
     assert(!ghost.m_isOnGround && !ghost.m_jumpBuffered && ghost.m_yVelocity == 0);
     assert(ghost.m_gameModeChangedTime == 0);
+    assert(ghost.m_stateDartSlide == 0 && ghost.m_stateHitHead == 0);
+    assert(real.m_stateDartSlide == 0 && real.m_stateHitHead == 0);
     assert(ghost.m_holdingButtons.empty() && ghost.modeMarker == 17);
     assert(!ghost.m_maybeIsBoosted && ghost.m_accelerationOrSpeed == 0);
     assert(!ghost.m_enable22Changes && !ghost.m_enableImpulseFix && !ghost.m_gv0123);

@@ -246,7 +246,20 @@ entre 1 y 66 ms (12 ms por defecto)
 
 <!-- /coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:96594e1ad332cec64399673a0d15c884ffd6f67e34b92fda5a6ce0113a0120bc -->
+
+## Corrección 0.6.2
+
+- Los bloques especiales D (1755) y H (1859), antes marcados como incompatibles, se pasan a las colisiones nativas mediante copias privadas. El estado de deslizamiento de wave se restaura entre candidatos.
+- El diagnóstico añade `frame_budget_ms` y `deadline_us` para distinguir el límite por entrada del tiempo restante del fotograma.
+- Los triggers que cambian el mundo, los orbes personalizados y los portales de teletransporte siguen interrumpiendo la predicción. El registro identifica el primer obstáculo para simular; no demuestra por sí solo que se haya omitido un sólido.
+- Fuente: [PlayerObject::touchedObject de GD 2.2081](https://github.com/geode-sdk/bindings/blob/main/bindings/2.2081/inline/PlayerObject.cpp). La precisión de estos contactos requiere comprobarse dentro del juego.
+
 ## Limitaciones
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- coderabbit-ai-generated:v1 -->
 

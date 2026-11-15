@@ -10,6 +10,14 @@ constexpr bool colorOnlyTrigger(int id) {
         id == 899 || id == 900 || id == 915;
 }
 
+// GD 2.2081 PlayerObject::touchedObject handles these Special blocks by
+// updating player-local contact counters: D (dart slide) and H (hit head).
+// Other Special IDs can apply forces or world effects and need their own audit.
+template <typename Type>
+constexpr bool nativeContactBlock(Type type, int id) {
+    return type == Type::Special && (id == 1755 || id == 1859);
+}
+
 enum class CollisionCategory { geometry, slope, decoration, unsupported };
 
 template <typename Type>

@@ -586,10 +586,12 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
         });
         if (diagnostics) {
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count();
-            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} skipped_candidates={} second_tick_dt={}",
+            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} frame_budget_ms={} deadline_us={} skipped_candidates={} second_tick_dt={}",
                 down ? "press" : "release", player1, separateControls, static_cast<int>(context.vehicle), window, decisionName(decision.reason),
                 static_cast<unsigned>(decision.delay), decision.attempts, issueName(state.issue),
-                state.issueObjectID, state.issueObjectType, state.tickDt, elapsed, horizon, budget, decision.skippedCandidates, state.secondTickDt);
+                state.issueObjectID, state.issueObjectType, state.tickDt, elapsed, horizon, budget, frameLimit,
+                std::chrono::duration_cast<std::chrono::microseconds>(deadline - start).count(),
+                decision.skippedCandidates, state.secondTickDt);
         }
         switch (decision.reason) {
             case dynamic::DecisionReason::safeNow:
@@ -660,7 +662,7 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             auto portal = dynamic::portalAction(type);
             auto vehicle = dynamic::portalVehicle(type);
             auto speed = type == GameObjectType::Modifier ? dynamic::portalSpeed(object->m_objectID) : 0.f;
-            if (dynamic::nativeOrbOrPad(type)) {
+            if (dynamic::nativeOrbOrPad(type) || dynamic::nativeContactBlock(type, object->m_objectID)) {
                 auto& entry = objectEntry(object);
                 auto* effect = entry.originalTypes->effect;
                 if (effect && effect->m_targetGroupID != 0 &&
