@@ -31,6 +31,7 @@
 #include "scratch_buffers.hpp"
 #include "frame_budget.hpp"
 #include "object_types.hpp"
+#include "force_parameters.hpp"
 
 using namespace geode::prelude;
 namespace {
@@ -81,7 +82,7 @@ struct State {
     PlayLayer* layer = nullptr;
     CCNode* holder = nullptr;
     PlayerObject* ghost = nullptr;
-    using Types = dynamic::ObjectTypes<EffectGameObject, EnhancedGameObject, RingObject, DashRingObject>;
+    using Types = dynamic::ObjectTypes<EffectGameObject, EnhancedGameObject, RingObject, DashRingObject, ForceBlockGameObject>;
     struct ObjectCopy {
         Ref<GameObject> object;
         std::uint64_t generation = 0;
@@ -100,6 +101,9 @@ struct State {
     bool simulating = false;
     bool creatingGhost = false;
     bool simDead = false;
+    unsigned predictedDeaths = 0;
+    int firstDeathID = -1;
+    int firstDeathType = -1;
     bool uncertain = false;
     SimulationIssue issue = SimulationIssue::none;
     int issueObjectID = -1;
@@ -342,6 +346,15 @@ GameObject* interactionCopy(GameObject* original, State::ObjectCopy& entry) {
         dst->m_allowCollide = src->m_allowCollide;
         dst->m_stopSlide = src->m_stopSlide;
     }
+    if (auto* src = entry.originalTypes->force) {
+        auto* dst = entry.copyTypes->force;
+        if (!dst) return nullptr;
+        dynamic::copyForceParameters(*dst, *src);
+    } else if (dynamic::nativeForceBlock(original->m_objectID)) {
+        // Never feed an incorrectly constructed object to touchedObject's
+        // native ForceBlockGameObject cast.
+        return nullptr;
+    }
     entry.generation = state.generation;
     return copy;
 }
@@ -572,6 +585,9 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             }
             otherPlayer->saveToCheckpoint(secondCheckpoint.data());
         }
+        state.predictedDeaths = 0;
+        state.firstDeathID = -1;
+        state.firstDeathType = -1;
         auto decision = dynamic::chooseDelay(static_cast<std::uint8_t>(window), [&](std::uint8_t delay) {
             auto verdict = simulate(layer, player, state.checkpoint.data(), down, true, delay, horizon, deadline);
             if (verdict == dynamic::Verdict::safe && context.dual) {
@@ -586,12 +602,13 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
         });
         if (diagnostics) {
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count();
-            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} frame_budget_ms={} deadline_us={} skipped_candidates={} second_tick_dt={}",
+            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} frame_budget_ms={} deadline_us={} skipped_candidates={} second_tick_dt={} predicted_deaths={} first_death_id={} first_death_type={}",
                 down ? "press" : "release", player1, separateControls, static_cast<int>(context.vehicle), window, decisionName(decision.reason),
                 static_cast<unsigned>(decision.delay), decision.attempts, issueName(state.issue),
                 state.issueObjectID, state.issueObjectType, state.tickDt, elapsed, horizon, budget, frameLimit,
                 std::chrono::duration_cast<std::chrono::microseconds>(deadline - start).count(),
-                decision.skippedCandidates, state.secondTickDt);
+                decision.skippedCandidates, state.secondTickDt, state.predictedDeaths,
+                state.firstDeathID, state.firstDeathType);
         }
         switch (decision.reason) {
             case dynamic::DecisionReason::safeNow:
@@ -943,7 +960,15 @@ class $modify(DynamicPlayLayer, PlayLayer) {
     }
     void destroyPlayer(PlayerObject* player, GameObject* object) {
         if (state.simulating) {
-            if (player == state.ghost) state.simDead = true;
+            if (player == state.ghost) {
+                if (!state.simDead) {
+                    if (state.predictedDeaths++ == 0) {
+                        state.firstDeathID = object ? object->m_objectID : -1;
+                        state.firstDeathType = object ? static_cast<int>(object->m_objectType) : -1;
+                    }
+                    state.simDead = true;
+                }
+            }
             else { state.uncertain = true; state.issue = SimulationIssue::activation; }
             return;
         }

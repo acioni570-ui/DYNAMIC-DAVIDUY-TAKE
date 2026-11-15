@@ -6,8 +6,9 @@ struct Base { virtual ~Base() = default; };
 struct Effect : virtual Base { int group = 0; };
 struct Enhanced : virtual Base { int activated = 0; };
 struct Ring : Effect, Enhanced { int claim = 0; };
+struct Force : Effect {};
 struct Dash : Ring { int speed = 0; };
-using Types = dynamic::ObjectTypes<Effect, Enhanced, Ring, Dash>;
+using Types = dynamic::ObjectTypes<Effect, Enhanced, Ring, Dash, Force>;
 
 int main() {
     Dash source, copy;
@@ -27,13 +28,17 @@ int main() {
             assert(copy.group == source.group); // fields are not cached
         }
     }
-    assert(casts == 8); // four casts per object, not per simulation step
+    assert(casts == 10); // five casts per object, not per simulation step
     assert(srcTypes->ring == static_cast<Ring*>(&source));
     assert(srcTypes->enhanced == static_cast<Enhanced*>(&source));
     assert(srcTypes->dash == &source && dstTypes->dash == &copy);
     auto missing = Types::inspect(&plain, inspect);
-    assert(!missing.effect && !missing.enhanced && !missing.ring && !missing.dash);
+    assert(!missing.effect && !missing.enhanced && !missing.ring && !missing.dash && !missing.force);
+    Force force;
+    auto forceTypes = Types::inspect(static_cast<Base*>(&force), inspect);
+    assert(forceTypes.force == &force && forceTypes.effect == static_cast<Effect*>(&force));
+    assert(!forceTypes.ring && !forceTypes.dash);
     Effect effectOnly;
     auto partial = Types::inspect(static_cast<Base*>(&effectOnly), inspect);
-    assert(partial.effect == &effectOnly && !partial.enhanced && !partial.ring && !partial.dash);
+    assert(partial.effect == &effectOnly && !partial.enhanced && !partial.ring && !partial.dash && !partial.force);
 }

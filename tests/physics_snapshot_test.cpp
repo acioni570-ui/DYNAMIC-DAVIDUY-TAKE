@@ -19,6 +19,7 @@ struct Player {
     int m_stateBoostY = 0, m_stateForce = 0, m_stateForceVector = 0, m_affectedByForces = 0;
     int m_controlsDisabled = 0, m_inputsLocked = 0;
     std::map<int, bool> m_holdingButtons;
+    std::map<int, bool> m_jumpPadRelated;
     bool m_enable22Changes = false, m_enableImpulseFix = false, m_gv0123 = false;
     int modeMarker = 9; // mode is selected separately by the game
 };
@@ -35,6 +36,7 @@ int main() {
     real.m_maybeIsBoosted = 1;
     real.m_accelerationOrSpeed = 5;
     real.m_holdingButtons[1] = true;
+    real.m_jumpPadRelated[17] = true;
     real.m_enable22Changes = real.m_enableImpulseFix = real.m_gv0123 = true;
     real.m_stateDartSlide = real.m_stateHitHead = 2;
     ghost.modeMarker = 17;
@@ -47,6 +49,14 @@ int main() {
     assert(ghost.m_stateDartSlide == 2 && ghost.m_stateHitHead == 2);
     assert(ghost.m_enable22Changes && ghost.m_enableImpulseFix && ghost.m_gv0123);
 
+    // Force IDs already consumed by the real player must be retained, and
+    // consuming an ID in a candidate must not change the live player/map.
+    assert(ghost.m_jumpPadRelated.at(17));
+    ghost.m_jumpPadRelated[18] = true;
+    assert(!real.m_jumpPadRelated.contains(18));
+    dynamic::copyGroundAndVelocityState(ghost, real);
+    assert(!ghost.m_jumpPadRelated.contains(18));
+
     // A second candidate must replace stale data from the first simulation.
     real = Player{};
     dynamic::copyGroundAndVelocityState(ghost, real);
@@ -54,6 +64,7 @@ int main() {
     assert(ghost.m_gameModeChangedTime == 0);
     assert(ghost.m_stateDartSlide == 0 && ghost.m_stateHitHead == 0);
     assert(real.m_stateDartSlide == 0 && real.m_stateHitHead == 0);
+    assert(ghost.m_jumpPadRelated.empty());
     assert(ghost.m_holdingButtons.empty() && ghost.modeMarker == 17);
     assert(!ghost.m_maybeIsBoosted && ghost.m_accelerationOrSpeed == 0);
     assert(!ghost.m_enable22Changes && !ghost.m_enableImpulseFix && !ghost.m_gv0123);

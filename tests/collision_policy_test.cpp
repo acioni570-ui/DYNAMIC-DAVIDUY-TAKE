@@ -12,14 +12,14 @@ int main() {
     for (int id : {29, 30, 105, 744, 899, 900, 915}) assert(dynamic::colorOnlyTrigger(id));
     for (int id : {901, 1049, 1006, 1007, 1268, 1817, 2067, -1, 99999})
         assert(!dynamic::colorOnlyTrigger(id));
-    // The two Special block IDs reported by the v0.6.1 log get native
-    // contact handling. Neither unrelated Special IDs nor another type do.
-    for (int id : {1755, 1859}) {
+    // Audited player contact blocks get native contact handling. Other
+    // Special IDs and mismatched object types remain unsupported.
+    for (int id : {1755, 1813, 1829, 1859, 2069, 2866, 3645}) {
         assert(dynamic::nativeContactBlock(ObjectType::Special, id));
         for (int type = -1; type <= 48; ++type)
             if (type != 40) assert(!dynamic::nativeContactBlock(static_cast<ObjectType>(type), id));
     }
-    for (int id : {-1, 1813, 1829, 2069, 2866, 3645, 99999})
+    for (int id : {-1, 1754, 1812, 1830, 2070, 2867, 3646, 99999})
         assert(!dynamic::nativeContactBlock(ObjectType::Special, id));
     using dynamic::CollisionCategory;
     using dynamic::collisionCategory;

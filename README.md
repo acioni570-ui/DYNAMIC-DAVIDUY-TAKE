@@ -250,7 +250,30 @@ entre 1 y 66 ms (12 ms por defecto)
 
 <!-- coderabbit-ai-generated-section:v1:96594e1ad332cec64399673a0d15c884ffd6f67e34b92fda5a6ce0113a0120bc -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:2cf99cf24fd2bbaef4886bf41d00ea4e164152c3549ca2d490670be236c4f656 -->
+
+## Cobertura 0.6.3
+
+La asistencia busca evitar muertes mediante física nativa. La cobertura actual es:
+
+| Situación | Tratamiento |
+| --- | --- |
+| Sólidos, pinchos, sierras y demás tipos Hazard/AnimatedHazard | Colisiones nativas por tipo, sin lista de IDs de peligros. |
+| Pendientes, suelo y techo | Se consulta la física nativa del jugador oculto; requiere verificación dentro del juego. |
+| Vehículos, gravedad/tamaño, velocidades, orbes y pads admitidos | Transiciones y física del candidato; grupos personalizados siguen pendientes. |
+| Bloques D/H/J/S y contacto 2866 | Copias privadas y `PlayerObject::touchedObject` nativo. |
+| Fuerzas 2069/3645 | Copias privadas con los seis parámetros de fuerza; el mapa de IDs consumidos se restaura entre candidatos. |
+| Objetos movidos por triggers, teletransporte, grupos custom y lógica futura del nivel | Simulación completa pendiente. El mundo no avanza junto con el jugador oculto; no se garantiza la predicción de estos peligros. |
+
+El diagnóstico añade `predicted_deaths`, `first_death_id` y `first_death_type`: informan de muertes notificadas por el motor durante la búsqueda. La primera muerte puede pertenecer a un candidato descartado, incluso si otro candidato acaba siendo seguro. Un ID `-1` con muertes indica que el motor no entregó un objeto; con cero muertes no hubo notificación. Estos campos se distinguen de `object_id`/`object_type`, que describen una interacción incompatible.
+
+Esta ampliación no cambia los límites de tiempo ni habilita dual o plataforma adicionales. No equivale a compatibilidad universal: requiere pruebas reales de colisiones, fuerzas, dash y pendientes en GD 2.2081.
+
 ## Corrección 0.6.2
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 - Los bloques especiales D (1755) y H (1859), antes marcados como incompatibles, se pasan a las colisiones nativas mediante copias privadas. El estado de deslizamiento de wave se restaura entre candidatos.
 - El diagnóstico añade `frame_budget_ms` y `deadline_us` para distinguir el límite por entrada del tiempo restante del fotograma.
