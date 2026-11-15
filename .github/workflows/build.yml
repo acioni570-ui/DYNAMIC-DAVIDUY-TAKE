@@ -24,6 +24,12 @@ jobs:
             artifact: DynamicAssist-Windows
           - path: optimizer
             artifact: DynamicOptimizer-Windows
+          - path: performance/particles
+            artifact: DynamicParticles-Windows
+          - path: performance/glow
+            artifact: DynamicGlow-Windows
+          - path: performance/effects
+            artifact: DynamicEffects-Windows
     needs: tests
     runs-on: windows-latest
     steps:

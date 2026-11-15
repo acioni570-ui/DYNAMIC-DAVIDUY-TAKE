@@ -1,0 +1,19 @@
+{
+  "geode": "5.11.2",
+  "gd": {
+    "win": "2.2081"
+  },
+  "version": "v0.1.0",
+  "id": "dynamicassist.particles",
+  "name": "Dynamic Particles Lite",
+  "developer": "Dynamic Assist",
+  "description": "Hide particle rendering while a level is open; particle updates and lifecycle remain native.",
+  "settings": {
+    "enabled": {
+      "type": "bool",
+      "name": "Enabled on next level entry",
+      "description": "Apply on the next level entry. Reduces visual effects; does not change physics or prediction limits.",
+      "default": true
+    }
+  }
+}

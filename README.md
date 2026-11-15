@@ -258,7 +258,27 @@ entre 1 y 66 ms (12 ms por defecto)
 
 <!-- coderabbit-ai-generated-section:v1:f40c5fb8c535bc3bad8e5f47dc00357e63155c68074031703e70560f90de94cc -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:6380282e1ae1a1cac979a7205f9465ef903965be6c1331d8d67dd69600ced646 -->
+
+## Tres complementos visuales opcionales (0.1.0)
+
+| Mod | Trabajo evitado | Coste o alcance |
+| --- | --- | --- |
+| Dynamic Particles Lite | Oculta los 20 batches de partículas conocidos y omite draw de sistemas quad/batch mientras hay un nivel abierto. | Desaparecen partículas, también en la pausa. La actualización, caducidad y liberación nativas siguen ejecutándose. |
+| Dynamic Glow Lite | Oculta una vez al entrar las nueve capas nativas de glow. | Desaparece el resplandor de objetos. No añade hooks por fotograma ni elimina objetos. |
+| Dynamic Effects Lite | Evita playShineEffect y playBumpEffect durante un nivel. | Desaparecen destellos y efectos de impacto. La lógica de movimiento y colisiones no cambia. |
+
+Son tres `.geode` independientes compatibles por diseño con Assist 0.7.0 y Optimizer 0.1.0. No hay que actualizar estos dos para instalarlos. Copia los nuevos archivos a `Geometry Dash/geode/mods` y reinicia; puedes instalar solo los que quieras. Cada complemento tiene **Enabled on next level entry**: los cambios se aplican al salir y volver a entrar al nivel.
+
+Los ajustes se leen al entrar, sin búsquedas de objetos, asignaciones de memoria ni logs por frame en las rutas añadidas. Los filtros de partículas y efectos usan una comprobación booleana; las capas se ocultan una sola vez. Son reducciones visuales, no aceleradores de física ni ampliaciones de compatibilidad de predicción. Pueden ocultar pistas visuales diseñadas por el creador del nivel. Otros mods o triggers que vuelvan a mostrar las capas pueden anular el ocultamiento.
+
+El beneficio depende del cuello de botella: reducir dibujo puede ayudar cuando limita la GPU; no reduce el coste de simulación de partículas ni garantiza FPS adicionales si limita la física de Dynamic. Es necesario comparar el mismo nivel y ajustes con cada complemento activado y desactivado. Esta entrega no tiene mediciones dentro de Geometry Dash ni pruebas de interacción con todos los demás mods.
+
 ## Optimización 0.7.0 y mod auxiliar
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 - Dynamic Assist guarda el contexto temporal del nivel una vez por entrada y lo restaura entre candidatos, reutilizando el respaldo. Antes lo volvía a copiar en cada candidato. <!-- coderabbit-ai-generated:v1 -->
 

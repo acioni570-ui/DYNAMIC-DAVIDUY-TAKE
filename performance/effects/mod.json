@@ -1,0 +1,19 @@
+{
+  "geode": "5.11.2",
+  "gd": {
+    "win": "2.2081"
+  },
+  "version": "v0.1.0",
+  "id": "dynamicassist.effects",
+  "name": "Dynamic Effects Lite",
+  "developer": "Dynamic Assist",
+  "description": "Skip cosmetic shine and player bump effects while a level is open.",
+  "settings": {
+    "enabled": {
+      "type": "bool",
+      "name": "Enabled on next level entry",
+      "description": "Apply on the next level entry. Reduces visual effects; does not change physics or prediction limits.",
+      "default": true
+    }
+  }
+}
