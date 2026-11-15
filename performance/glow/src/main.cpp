@@ -11,16 +11,16 @@ class $modify(DynamicGlowLevel, PlayLayer) {
         bool success = PlayLayer::init(level, replay, skipObjects);
         session.entered(success, success && Mod::get()->getSettingValue<bool>("enabled"));
         if (session.suppress()) {
-            dynamic::hideVisualLayers(std::array<CCSpriteBatchNode*, 9>{{
-                this->m_glowLayerT4,
-                this->m_glowLayerT3,
-                this->m_glowLayerT2,
-                this->m_glowLayerT1,
-                this->m_glowLayerB1,
-                this->m_glowLayerB2,
-                this->m_glowLayerB3,
-                this->m_glowLayerB4,
-                this->m_glowLayerB5}});
+            dynamic::hideVisualLayers<CCNode>(this, std::array<std::uintptr_t, 9>{{
+                dynamic::visualAddress(&this->m_glowLayerT4),
+                dynamic::visualAddress(&this->m_glowLayerT3),
+                dynamic::visualAddress(&this->m_glowLayerT2),
+                dynamic::visualAddress(&this->m_glowLayerT1),
+                dynamic::visualAddress(&this->m_glowLayerB1),
+                dynamic::visualAddress(&this->m_glowLayerB2),
+                dynamic::visualAddress(&this->m_glowLayerB3),
+                dynamic::visualAddress(&this->m_glowLayerB4),
+                dynamic::visualAddress(&this->m_glowLayerB5)}}, [](CCNode* node) { return typeinfo_cast<CCSpriteBatchNode*>(node); });
         }
         return success;
     }

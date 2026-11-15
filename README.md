@@ -262,7 +262,21 @@ entre 1 y 66 ms (12 ms por defecto)
 
 <!-- coderabbit-ai-generated-section:v1:6380282e1ae1a1cac979a7205f9465ef903965be6c1331d8d67dd69600ced646 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:8ad64640f3a5d25403d08191dd8c9c5032a7494b6a7967f66566ac10a29290c4 -->
+
+## Corrección de cierre en los complementos visuales (0.1.1)
+
+El informe recibido muestra un acceso inválido en Particles Lite 0.1.0 al entrar al nivel. Esa versión trataba como válido cualquier puntero de capa no nulo; el valor que causó el fallo no apuntaba a un objeto. Glow Lite tenía la misma pauta y se corrigió también.
+
+Particles Lite y Glow Lite 0.1.1 recorren el árbol real del nivel una vez al entrar, y ocultan únicamente capas cuyos valores coinciden con nodos presentes y del tipo esperado. Las referencias inválidas se ignoran. Las capas que no se encuentren en ese árbol pueden seguir visibles; se mantiene la supresión de dibujo de partículas quad/batch. Este recorrido añade trabajo al cargar el nivel y no se realiza en cada fotograma. La corrección debe comprobarse en el juego, también con los demás mods instalados.
+
+Desinstala los archivos 0.1.0 de Particles Lite y Glow Lite antes de instalar sus versiones 0.1.1. Effects Lite permanece en 0.1.0.
+
 ## Tres complementos visuales opcionales (0.1.0)
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 | Mod | Trabajo evitado | Coste o alcance |
 | --- | --- | --- |
@@ -272,7 +286,13 @@ entre 1 y 66 ms (12 ms por defecto)
 
 Son tres `.geode` independientes compatibles por diseño con Assist 0.7.0 y Optimizer 0.1.0. No hay que actualizar estos dos para instalarlos. Copia los nuevos archivos a `Geometry Dash/geode/mods` y reinicia; puedes instalar solo los que quieras. Cada complemento tiene **Enabled on next level entry**: los cambios se aplican al salir y volver a entrar al nivel.
 
-Los ajustes se leen al entrar, sin búsquedas de objetos, asignaciones de memoria ni logs por frame en las rutas añadidas. Los filtros de partículas y efectos usan una comprobación booleana; las capas se ocultan una sola vez. Son reducciones visuales, no aceleradores de física ni ampliaciones de compatibilidad de predicción. Pueden ocultar pistas visuales diseñadas por el creador del nivel. Otros mods o triggers que vuelvan a mostrar las capas pueden anular el ocultamiento.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:3a65b550360892cc08d001ce90f83507ef5d485b71a2b7cbc521751895066e08 -->
+
+Los ajustes se leen al entrar. Particles y Glow recorren el árbol una vez al cargar para validar capas; los filtros no recorren el árbol ni consultan ajustes en cada fotograma.
+
+<!-- /coderabbit-ai-generated:v1 --> Los filtros de partículas y efectos usan una comprobación booleana; las capas se ocultan una sola vez. Son reducciones visuales, no aceleradores de física ni ampliaciones de compatibilidad de predicción. Pueden ocultar pistas visuales diseñadas por el creador del nivel. Otros mods o triggers que vuelvan a mostrar las capas pueden anular el ocultamiento.
 
 El beneficio depende del cuello de botella: reducir dibujo puede ayudar cuando limita la GPU; no reduce el coste de simulación de partículas ni garantiza FPS adicionales si limita la física de Dynamic. Es necesario comparar el mismo nivel y ajustes con cada complemento activado y desactivado. Esta entrega no tiene mediciones dentro de Geometry Dash ni pruebas de interacción con todos los demás mods.
 

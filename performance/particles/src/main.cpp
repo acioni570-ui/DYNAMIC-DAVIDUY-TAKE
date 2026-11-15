@@ -13,27 +13,27 @@ class $modify(DynamicParticlesLevel, PlayLayer) {
         bool success = PlayLayer::init(level, replay, skipObjects);
         session.entered(success, success && Mod::get()->getSettingValue<bool>("enabled"));
         if (session.suppress()) {
-            dynamic::hideVisualLayers(std::array<CCSpriteBatchNode*, 20>{{
-                this->m_particleBlendingLayerT5,
-                this->m_particleLayerT4,
-                this->m_particleBlendingLayerT4,
-                this->m_particleLayerT3,
-                this->m_particleBlendingLayerT3,
-                this->m_particleLayerT2,
-                this->m_particleBlendingLayerT2,
-                this->m_particleLayerT1,
-                this->m_particleBlendingLayerT1,
-                this->m_particleBlendingLayerB0,
-                this->m_particleLayerB1,
-                this->m_particleBlendingLayerB1,
-                this->m_particleLayerB2,
-                this->m_particleBlendingLayerB2,
-                this->m_particleLayerB3,
-                this->m_particleBlendingLayerB3,
-                this->m_particleLayerB4,
-                this->m_particleBlendingLayerB4,
-                this->m_particleLayerB5,
-                this->m_particleBlendingLayerB5}});
+            dynamic::hideVisualLayers<CCNode>(this, std::array<std::uintptr_t, 20>{{
+                dynamic::visualAddress(&this->m_particleBlendingLayerT5),
+                dynamic::visualAddress(&this->m_particleLayerT4),
+                dynamic::visualAddress(&this->m_particleBlendingLayerT4),
+                dynamic::visualAddress(&this->m_particleLayerT3),
+                dynamic::visualAddress(&this->m_particleBlendingLayerT3),
+                dynamic::visualAddress(&this->m_particleLayerT2),
+                dynamic::visualAddress(&this->m_particleBlendingLayerT2),
+                dynamic::visualAddress(&this->m_particleLayerT1),
+                dynamic::visualAddress(&this->m_particleBlendingLayerT1),
+                dynamic::visualAddress(&this->m_particleBlendingLayerB0),
+                dynamic::visualAddress(&this->m_particleLayerB1),
+                dynamic::visualAddress(&this->m_particleBlendingLayerB1),
+                dynamic::visualAddress(&this->m_particleLayerB2),
+                dynamic::visualAddress(&this->m_particleBlendingLayerB2),
+                dynamic::visualAddress(&this->m_particleLayerB3),
+                dynamic::visualAddress(&this->m_particleBlendingLayerB3),
+                dynamic::visualAddress(&this->m_particleLayerB4),
+                dynamic::visualAddress(&this->m_particleBlendingLayerB4),
+                dynamic::visualAddress(&this->m_particleLayerB5),
+                dynamic::visualAddress(&this->m_particleBlendingLayerB5)}}, [](CCNode* node) { return typeinfo_cast<CCSpriteBatchNode*>(node); });
         }
         return success;
     }
