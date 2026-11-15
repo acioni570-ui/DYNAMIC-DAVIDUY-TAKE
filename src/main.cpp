@@ -13,12 +13,15 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include "controls.hpp"
 #include "collision_policy.hpp"
+#include "object_catalog.hpp"
+#include "activation_cache.hpp"
 #include "portal_policy.hpp"
 #include "interaction_policy.hpp"
 #include "scoped_restore.hpp"
@@ -27,6 +30,11 @@
 #include "mode_policy.hpp"
 #include "physics_snapshot.hpp"
 #include "simulation_safety.hpp"
+#include "scratch_buffers.hpp"
+#include "frame_budget.hpp"
+#include "object_types.hpp"
+#include "force_parameters.hpp"
+#include "optimizer_api.hpp"
 
 using namespace geode::prelude;
 namespace {
@@ -77,16 +85,29 @@ struct State {
     PlayLayer* layer = nullptr;
     CCNode* holder = nullptr;
     PlayerObject* ghost = nullptr;
-    struct ObjectCopy { Ref<GameObject> object; std::uint64_t generation = 0; };
+    using Types = dynamic::ObjectTypes<EffectGameObject, EnhancedGameObject, RingObject, DashRingObject, ForceBlockGameObject>;
+    struct ObjectCopy {
+        Ref<GameObject> object;
+        std::uint64_t generation = 0;
+        std::optional<Types> originalTypes;
+        std::optional<Types> copyTypes;
+    };
     std::unordered_map<GameObject*, ObjectCopy> copies;
     std::unordered_set<GameObject*> scratchObjects;
+    std::unordered_set<CCNode*> schedulingRoots;
     std::vector<GameObject*> activeCopies;
-    std::unordered_set<GameObject*> activatedPortals;
+    dynamic::ScratchBuffers<gd::vector<GameObject*>> collisionBuffers;
+    std::unordered_map<GameObject*, std::uint64_t> activatedPortals;
     std::uint64_t generation = 0;
     Ref<PlayerCheckpoint> checkpoint;
+    dynamic::FrameBudget<Clock> frameBudget;
+    std::optional<unsigned> controlsFrame;
     bool simulating = false;
     bool creatingGhost = false;
     bool simDead = false;
+    unsigned predictedDeaths = 0;
+    int firstDeathID = -1;
+    int firstDeathType = -1;
     bool uncertain = false;
     SimulationIssue issue = SimulationIssue::none;
     int issueObjectID = -1;
@@ -117,6 +138,35 @@ struct State {
     dynamic::Vehicle pendingVehicle = dynamic::Vehicle::unknown;
 } state;
 
+// Geode keeps loaded mod binaries resident. Resolve once when entering a level;
+// absent or older companions leave all baseline cleanup and physics intact.
+dynamic::optimizer::Count optimizerCount = nullptr;
+bool predictionNode(void* raw) {
+    if (!state.simulating) return false;
+    auto* node = typeinfo_cast<CCNode*>(static_cast<CCObject*>(raw));
+    for (auto* current = node; current; current = current->getParent()) {
+        if (current == state.holder ||
+            state.schedulingRoots.contains(current)) return true;
+    }
+    return false;
+}
+void connectOptimizer() {
+    optimizerCount = nullptr;
+    auto module = GetModuleHandleW(L"dynamicassist.optimizer.dll");
+    if (!module) return;
+    auto connect = reinterpret_cast<dynamic::optimizer::Connect>(
+        GetProcAddress(module, dynamic::optimizer::connectSymbol));
+    auto connectV2 = reinterpret_cast<dynamic::optimizer::ConnectV2>(
+        GetProcAddress(module, dynamic::optimizer::connectSymbolV2));
+    auto count = reinterpret_cast<dynamic::optimizer::Count>(
+        GetProcAddress(module, dynamic::optimizer::countSymbol));
+    if ((!connect && !connectV2) || !count) return;
+    if (connectV2) connectV2(&predictionNode, &state.simulating);
+    else connect(&predictionNode);
+    optimizerCount = count;
+}
+
+
 void updateControls() {
     auto window = dynamic::clampWindow(Mod::get()->getSettingValue<int64_t>("window"));
     auto visible = Mod::get()->getSettingValue<bool>("show-controls");
@@ -126,6 +176,7 @@ void updateControls() {
     if (state.controls) state.controls->setVisible(visible);
     if (state.status) {
         state.status->setVisible(visible);
+        if (!visible) return;
         auto text = fmt::format("Assist: {} | {} ticks (F6/F7)\nCorrecciones: {} | ticks: {} | ultimo: {}\n{}",
             window ? "ON" : "OFF", window, state.stats.corrected,
             state.stats.delayedTicks, state.stats.lastDelay, state.lastResult);
@@ -252,8 +303,17 @@ void ensureGhost(PlayLayer* layer) {
 // Keep activation state on private objects. Native ring/pad physics may mark
 // an object activated, claim its touch, or animate it; none of those writes may
 // reach a real level object. Copies are reset once for each candidate.
-GameObject* interactionCopy(GameObject* original) {
+State::Types inspectObjectTypes(GameObject* object) {
+    return State::Types::inspect(object, []<typename T>(GameObject* value) {
+        return typeinfo_cast<T*>(value);
+    });
+}
+State::ObjectCopy& objectEntry(GameObject* original) {
     auto& entry = state.copies[original];
+    if (!entry.originalTypes) entry.originalTypes = inspectObjectTypes(original);
+    return entry;
+}
+GameObject* interactionCopy(GameObject* original, State::ObjectCopy& entry) {
     if (!entry.object) {
         auto* owners = state.ghost ? static_cast<CCArray*>(
             state.ghost->getUserObject("dynamicassist.practice/private-copies")) : nullptr;
@@ -261,11 +321,15 @@ GameObject* interactionCopy(GameObject* original) {
         entry.object = GameObject::createWithKey(original->m_objectID);
         // Native PlayerObject has raw contact/dash pointers. Keep the targets
         // alive until its destructor finishes, even after the cache is cleared.
-        if (entry.object) owners->addObject(entry.object.data());
+        if (entry.object) {
+            owners->addObject(entry.object.data());
+            state.scratchObjects.insert(entry.object.data());
+            state.schedulingRoots.insert(entry.object.data());
+            entry.copyTypes = inspectObjectTypes(entry.object.data());
+        }
     }
     auto* copy = entry.object.data();
     if (!copy) return nullptr;
-    state.scratchObjects.insert(copy);
     if (entry.generation == state.generation) return copy;
     dynamic::stopPredictionNode<CCNode>(copy);
     state.activeCopies.push_back(copy);
@@ -284,16 +348,16 @@ GameObject* interactionCopy(GameObject* original) {
     copy->m_hasNoEffects = true;
     copy->m_hasNoParticles = true;
     copy->setVisible(false);
-    if (auto* src = typeinfo_cast<EffectGameObject*>(original)) {
-        auto* dst = typeinfo_cast<EffectGameObject*>(copy);
+    if (auto* src = entry.originalTypes->effect) {
+        auto* dst = entry.copyTypes->effect;
         if (!dst) return nullptr;
         dst->m_gravityValue = src->m_gravityValue;
         dst->m_gravityMod = src->m_gravityMod;
         dst->m_isReverse = src->m_isReverse;
         dst->m_targetGroupID = src->m_targetGroupID;
     }
-    if (auto* src = typeinfo_cast<EnhancedGameObject*>(original)) {
-        auto* dst = typeinfo_cast<EnhancedGameObject*>(copy);
+    if (auto* src = entry.originalTypes->enhanced) {
+        auto* dst = entry.copyTypes->enhanced;
         if (!dst) return nullptr;
         dst->m_isMultiActivate = src->m_isMultiActivate;
         dst->m_isNoMultiActivate = src->m_isNoMultiActivate;
@@ -301,14 +365,14 @@ GameObject* interactionCopy(GameObject* original) {
         dst->m_activatedByPlayer1 = src->m_activatedByPlayer1;
         dst->m_activatedByPlayer2 = src->m_activatedByPlayer2;
     }
-    if (auto* src = typeinfo_cast<RingObject*>(original)) {
-        auto* dst = typeinfo_cast<RingObject*>(copy);
+    if (auto* src = entry.originalTypes->ring) {
+        auto* dst = entry.copyTypes->ring;
         if (!dst) return nullptr;
         dst->m_claimTouch = src->m_claimTouch;
         dst->m_isSpawnOnly = src->m_isSpawnOnly;
     }
-    if (auto* src = typeinfo_cast<DashRingObject*>(original)) {
-        auto* dst = typeinfo_cast<DashRingObject*>(copy);
+    if (auto* src = entry.originalTypes->dash) {
+        auto* dst = entry.copyTypes->dash;
         if (!dst) return nullptr;
         dst->m_dashSpeed = src->m_dashSpeed;
         dst->m_endBoost = src->m_endBoost;
@@ -316,8 +380,20 @@ GameObject* interactionCopy(GameObject* original) {
         dst->m_allowCollide = src->m_allowCollide;
         dst->m_stopSlide = src->m_stopSlide;
     }
+    if (auto* src = entry.originalTypes->force) {
+        auto* dst = entry.copyTypes->force;
+        if (!dst) return nullptr;
+        dynamic::copyForceParameters(*dst, *src);
+    } else if (dynamic::nativeForceBlock(original->m_objectID)) {
+        // Never feed an incorrectly constructed object to touchedObject's
+        // native ForceBlockGameObject cast.
+        return nullptr;
+    }
     entry.generation = state.generation;
     return copy;
+}
+GameObject* interactionCopy(GameObject* original) {
+    return interactionCopy(original, objectEntry(original));
 }
 
 void clearLogs(PlayerObject* p) {
@@ -331,16 +407,8 @@ void button(PlayerObject* p, bool down) {
     else p->releaseButton(PlayerButton::Jump);
 }
 
-dynamic::Verdict simulate(PlayLayer* layer, PlayerObject* player, PlayerCheckpoint* checkpoint, bool down, bool applyInput, unsigned delay, unsigned horizon,
-                          Clock::time_point deadline) {
-    auto* ghost = state.ghost;
-    state.issue = SimulationIssue::none;
-    state.issueObjectID = -1;
-    state.issueObjectType = -1;
-    if (!ghost || !player) { state.issue = SimulationIssue::missingPlayer; return dynamic::Verdict::unknown; }
-    if (state.tickDt <= 0) { state.issue = SimulationIssue::noTick; return dynamic::Verdict::unknown; }
-    if (Clock::now() >= deadline) { state.issue = SimulationIssue::deadline; return dynamic::Verdict::unknown; }
-    dynamic::ScopedRestore gameContext(layer->m_gameState,
+auto snapshotGameContext(GJGameState& context) {
+    return dynamic::StateSnapshot(context,
         &GJGameState::m_lastActivatedPortal1, &GJGameState::m_lastActivatedPortal2,
         &GJGameState::m_portalY, &GJGameState::m_gravityRelated,
         &GJGameState::m_playerStreakBlend, &GJGameState::m_isFreeMode,
@@ -350,6 +418,19 @@ dynamic::Verdict simulate(PlayLayer* layer, PlayerObject* player, PlayerCheckpoi
         &GJGameState::m_lastModeHeight, &GJGameState::m_cameraPosition,
         &GJGameState::m_cameraLastPosition, &GJGameState::m_cameraOffset,
         &GJGameState::m_activatedObjectIDs, &GJGameState::m_stateObjects);
+}
+
+template <typename Context>
+dynamic::Verdict simulate(PlayLayer* layer, PlayerObject* player, PlayerCheckpoint* checkpoint, bool down, bool applyInput, unsigned delay, unsigned horizon,
+                          Clock::time_point deadline, Context const& context) {
+    auto* ghost = state.ghost;
+    state.issue = SimulationIssue::none;
+    state.issueObjectID = -1;
+    state.issueObjectType = -1;
+    if (!ghost || !player) { state.issue = SimulationIssue::missingPlayer; return dynamic::Verdict::unknown; }
+    if (state.tickDt <= 0) { state.issue = SimulationIssue::noTick; return dynamic::Verdict::unknown; }
+    if (Clock::now() >= deadline) { state.issue = SimulationIssue::deadline; return dynamic::Verdict::unknown; }
+    auto gameContextGuard = context.guard();
     // Native restores/mode changes may schedule visual work after the call
     // returns. Stop it on every exit, while the simulation flag is still set.
     dynamic::PredictionScope simulationGuard(state.simulating, [] {
@@ -361,7 +442,6 @@ dynamic::Verdict simulate(PlayLayer* layer, PlayerObject* player, PlayerCheckpoi
     state.simDead = false;
     state.uncertain = false;
     ++state.generation;
-    state.activatedPortals.clear();
     // Use the game's practice checkpoint restore, including all vehicle flags,
     // velocities, slope data, held input and ring bookkeeping. The old partial
     // copy left state from the previous candidate on the hidden player.
@@ -493,25 +573,32 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             state.deliveredDown = down;
             return GJBaseGameLayer::handleButton(down, buttonId, player1);
         }
-        auto start = Clock::now();
-        auto budget = dynamic::clampBudget(Mod::get()->getSettingValue<int64_t>("budget"));
-        auto deadline = start + std::chrono::milliseconds(budget);
-        auto horizon = dynamic::clampHorizon(Mod::get()->getSettingValue<int64_t>("horizon"));
-        ensureGhost(layer);
-        if (!state.ghost) {
-            if (diagnostics) log::info("[Dynamic Assist diagnostic] input ignored: ghost-unavailable");
-            flush(layer);
-            showResult("Sin prediccion: ghost-unavailable");
-            state.deliveredDown = down;
-            return GJBaseGameLayer::handleButton(down, buttonId, player1);
-        }
         if (!state.pending.empty()) {
             // The prediction assumed the previous button state persists. A new
             // input invalidates it, so stop waiting and preserve event order.
             flush(layer);
-            log::info("Dynamic Assist: ended the planned delay on new input");
             if (diagnostics) log::info("[Dynamic Assist diagnostic] pending delay interrupted by another input");
             showResult("Entrada interrumpida por nuevo clic");
+            state.deliveredDown = down;
+            return GJBaseGameLayer::handleButton(down, buttonId, player1);
+        }
+        auto budget = dynamic::clampBudget(Mod::get()->getSettingValue<int64_t>("budget"));
+        auto frameLimit = std::clamp<int64_t>(Mod::get()->getSettingValue<int64_t>("frame-budget"), 0, 66);
+        auto prediction = state.frameBudget.start(CCDirector::sharedDirector()->getTotalFrames(),
+            std::chrono::milliseconds(budget), std::chrono::milliseconds(frameLimit));
+        auto start = prediction.started();
+        auto deadline = prediction.deadline();
+        if (start >= deadline) {
+            if (diagnostics) log::info("[Dynamic Assist diagnostic] input unchanged: frame-budget exhausted");
+            showResult("Presupuesto del fotograma agotado");
+            state.deliveredDown = down;
+            return GJBaseGameLayer::handleButton(down, buttonId, player1);
+        }
+        auto horizon = dynamic::clampHorizon(Mod::get()->getSettingValue<int64_t>("horizon"));
+        ensureGhost(layer);
+        if (!state.ghost) {
+            if (diagnostics) log::info("[Dynamic Assist diagnostic] input ignored: ghost-unavailable");
+            showResult("Sin prediccion: ghost-unavailable");
             state.deliveredDown = down;
             return GJBaseGameLayer::handleButton(down, buttonId, player1);
         }
@@ -536,10 +623,16 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             }
             otherPlayer->saveToCheckpoint(secondCheckpoint.data());
         }
+        auto skippedTimers = diagnostics && optimizerCount ? optimizerCount() : 0;
+        state.predictedDeaths = 0;
+        state.firstDeathID = -1;
+        state.firstDeathType = -1;
+        state.activatedPortals.clear();
+        auto contextSnapshot = snapshotGameContext(layer->m_gameState);
         auto decision = dynamic::chooseDelay(static_cast<std::uint8_t>(window), [&](std::uint8_t delay) {
-            auto verdict = simulate(layer, player, state.checkpoint.data(), down, true, delay, horizon, deadline);
+            auto verdict = simulate(layer, player, state.checkpoint.data(), down, true, delay, horizon, deadline, contextSnapshot);
             if (verdict == dynamic::Verdict::safe && context.dual) {
-                verdict = simulate(layer, otherPlayer, secondCheckpoint.data(), down, !separateControls, delay, horizon, deadline);
+                verdict = simulate(layer, otherPlayer, secondCheckpoint.data(), down, !separateControls, delay, horizon, deadline, contextSnapshot);
             }
             // Include native setup and scoped cleanup in the same deadline.
             if (Clock::now() >= deadline) {
@@ -550,10 +643,15 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
         });
         if (diagnostics) {
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count();
-            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} skipped_candidates={} second_tick_dt={}",
+            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} frame_budget_ms={} deadline_us={} skipped_candidates={} second_tick_dt={} predicted_deaths={} first_death_id={} first_death_type={} optimizer={} skipped_timers={} object_in_catalog={} death_in_catalog={}",
                 down ? "press" : "release", player1, separateControls, static_cast<int>(context.vehicle), window, decisionName(decision.reason),
                 static_cast<unsigned>(decision.delay), decision.attempts, issueName(state.issue),
-                state.issueObjectID, state.issueObjectType, state.tickDt, elapsed, horizon, budget, decision.skippedCandidates, state.secondTickDt);
+                state.issueObjectID, state.issueObjectType, state.tickDt, elapsed, horizon, budget, frameLimit,
+                std::chrono::duration_cast<std::chrono::microseconds>(deadline - start).count(),
+                decision.skippedCandidates, state.secondTickDt, state.predictedDeaths,
+                state.firstDeathID, state.firstDeathType, optimizerCount != nullptr,
+                optimizerCount ? optimizerCount() - skippedTimers : 0,
+                dynamic::knownObjectID(state.issueObjectID), dynamic::knownObjectID(state.firstDeathID));
         }
         switch (decision.reason) {
             case dynamic::DecisionReason::safeNow:
@@ -588,7 +686,7 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             state.pendingSeparateControls = separateControls;
             state.pendingSecondVehicle = context.dual
                 ? predictionContext(otherPlayer, layer, true).vehicle : dynamic::Vehicle::unknown;
-            log::info("Dynamic Assist: planned delay {} tick(s)", static_cast<unsigned>(decision.delay));
+            if (diagnostics) log::info("Dynamic Assist: planned delay {} tick(s)", static_cast<unsigned>(decision.delay));
             return;
         }
         state.deliveredDown = down;
@@ -598,7 +696,8 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
     void collisionCheckObjects(PlayerObject* player, gd::vector<GameObject*>* objects, int count, float dt) {
         if (!state.simulating || player != state.ghost || !objects)
             return GJBaseGameLayer::collisionCheckObjects(player, objects, count, dt);
-        gd::vector<GameObject*> filtered;
+        auto buffer = state.collisionBuffers.acquire();
+        auto& filtered = buffer.get();
         auto limit = std::max(0, std::min<int>(count, static_cast<int>(objects->size())));
         filtered.reserve(static_cast<std::size_t>(std::min(limit, 64)));
         for (int i = 0; i < limit; ++i) {
@@ -607,10 +706,12 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             auto type = object->m_objectType;
             if (type == GameObjectType::Modifier && dynamic::colorOnlyTrigger(object->m_objectID)) continue;
             auto category = dynamic::collisionCategory(type);
-            if (category == dynamic::CollisionCategory::slope) {
+            if (category == dynamic::CollisionCategory::slope ||
+                category == dynamic::CollisionCategory::geometry) {
                 filtered.push_back(object);
                 continue;
             }
+            if (category == dynamic::CollisionCategory::decoration) continue;
             if (layerDualInteractionUnsupported(type) &&
                 object->getObjectRect().intersectsRect(player->getObjectRect())) {
                 state.uncertain = true; state.issue = SimulationIssue::object;
@@ -621,8 +722,9 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             auto portal = dynamic::portalAction(type);
             auto vehicle = dynamic::portalVehicle(type);
             auto speed = type == GameObjectType::Modifier ? dynamic::portalSpeed(object->m_objectID) : 0.f;
-            if (dynamic::nativeOrbOrPad(type)) {
-                auto* effect = typeinfo_cast<EffectGameObject*>(object);
+            if (dynamic::nativeOrbOrPad(type) || dynamic::nativeContactBlock(type, object->m_objectID)) {
+                auto& entry = objectEntry(object);
+                auto* effect = entry.originalTypes->effect;
                 if (effect && effect->m_targetGroupID != 0 &&
                     object->getObjectRect().intersectsRect(player->getObjectRect())) {
                     state.uncertain = true; state.issue = SimulationIssue::activation;
@@ -630,7 +732,7 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
                     state.issueObjectType = static_cast<int>(type);
                     return;
                 }
-                auto* copy = interactionCopy(object);
+                auto* copy = interactionCopy(object, entry);
                 if (copy) filtered.push_back(copy);
                 else { state.uncertain = true; state.issue = SimulationIssue::object;
                     state.issueObjectID = object->m_objectID; state.issueObjectType = static_cast<int>(type); }
@@ -647,7 +749,7 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
                 bool overlaps = object->m_objectRadius > 0.f
                     ? GJBaseGameLayer::playerCircleCollision(player, object)
                     : object->getObjectRect().intersectsRect(player->getObjectRect());
-                if (overlaps && state.activatedPortals.insert(object).second) {
+                if (overlaps && dynamic::firstActivation(state.activatedPortals, object, state.generation)) {
                     dynamic::applyPortal(*player, portal);
                     player->m_lastPortalPos = object->getPosition();
                     player->m_lastActivatedPortal = object;
@@ -659,8 +761,6 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
                     }
                     if (speed > 0.f) player->m_playerSpeed = speed;
                 }
-            } else if (category == dynamic::CollisionCategory::geometry) {
-                filtered.push_back(object);
             } else if (category == dynamic::CollisionCategory::unsupported &&
                        object->getObjectRect().intersectsRect(player->getObjectRect())) {
                 state.uncertain = true;
@@ -723,45 +823,50 @@ class $modify(DynamicPlayer, PlayerObject) {
         PlayerObject::toggleGhostEffect(type);
     }
     void update(float dt) {
-        auto* layer = PlayLayer::get();
+        auto* layer = state.simulating ? nullptr : PlayLayer::get();
         if (!state.simulating && layer && layer == state.layer && this == layer->m_player2)
             state.secondTickDt = dynamic::validTickDuration(dt) ? dt : 0.f;
         if (!state.simulating && layer && layer == state.layer && this == layer->m_player1) {
             ++state.tick;
             state.tickDt = dynamic::validTickDuration(dt) ? dt : 0.f;
-            DWORD foregroundProcess = 0;
-            auto* foreground = GetForegroundWindow();
-            if (foreground) GetWindowThreadProcessId(foreground, &foregroundProcess);
-            bool focused = foregroundProcess == GetCurrentProcessId();
-            bool pressed = focused && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
-            if (pressed && !state.f6Down) {
-                auto next = dynamic::nextWindow(Mod::get()->getSettingValue<int64_t>("window"));
-                setWindow(layer, next);
-                log::info("Dynamic Assist window: {} ticks", next);
+            auto frame = CCDirector::sharedDirector()->getTotalFrames();
+            if (!state.controlsFrame || *state.controlsFrame != frame) {
+                state.controlsFrame = frame;
+                DWORD foregroundProcess = 0;
+                auto* foreground = GetForegroundWindow();
+                if (foreground) GetWindowThreadProcessId(foreground, &foregroundProcess);
+                bool focused = foregroundProcess == GetCurrentProcessId();
+                bool pressed = focused && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
+                if (pressed && !state.f6Down) {
+                    auto next = dynamic::nextWindow(Mod::get()->getSettingValue<int64_t>("window"));
+                    setWindow(layer, next);
+                    log::info("Dynamic Assist window: {} ticks", next);
+                }
+                state.f6Down = pressed;
+                bool toggle = focused && (GetAsyncKeyState(VK_F7) & 0x8000) != 0;
+                if (toggle && !state.f7Down) {
+                    setWindow(layer, dynamic::toggleWindow(Mod::get()->getSettingValue<int64_t>("window"), state.lastWindow));
+                }
+                state.f7Down = toggle;
+                auto displayedWindow = dynamic::clampWindow(Mod::get()->getSettingValue<int64_t>("window"));
+                if (state.displayedWindow != displayedWindow) state.lastResult = "Esperando clic";
+                if (state.displayedWindow != displayedWindow ||
+                    state.displayedControls != Mod::get()->getSettingValue<bool>("show-controls")) updateControls();
             }
-            state.f6Down = pressed;
-            bool toggle = focused && (GetAsyncKeyState(VK_F7) & 0x8000) != 0;
-            if (toggle && !state.f7Down) {
-                setWindow(layer, dynamic::toggleWindow(Mod::get()->getSettingValue<int64_t>("window"), state.lastWindow));
+            auto displayedWindow = state.displayedWindow;
+            if (!state.pending.empty()) {
+                auto* pendingPlayer = state.pendingPlayer1 ? layer->m_player1 : layer->m_player2;
+                auto* pendingOther = state.pendingPlayer1 ? layer->m_player2 : layer->m_player1;
+                auto context = predictionContext(pendingPlayer, layer, displayedWindow > 0);
+                if (!dynamic::compatibleTickDuration(state.pendingTickDt, state.tickDt) ||
+                    context.dual != state.pendingDual ||
+                    (context.dual && layer->m_levelSettings &&
+                     layer->m_levelSettings->m_twoPlayerMode != state.pendingSeparateControls) ||
+                    (context.dual && predictionContext(pendingOther, layer, true).vehicle != state.pendingSecondVehicle) ||
+                    dynamic::pendingInvalidated(context, state.pendingVehicle) ||
+                    dynamic::pendingExceedsWindow(state.pendingDelay, displayedWindow))
+                    flush(layer);
             }
-            state.f7Down = toggle;
-            auto displayedWindow = dynamic::clampWindow(Mod::get()->getSettingValue<int64_t>("window"));
-            if (state.displayedWindow != displayedWindow) state.lastResult = "Esperando clic";
-            if (state.displayedWindow != displayedWindow ||
-                state.displayedControls != Mod::get()->getSettingValue<bool>("show-controls")) updateControls();
-            auto window = dynamic::clampWindow(Mod::get()->getSettingValue<int64_t>("window"));
-            auto* pendingPlayer = state.pendingPlayer1 ? layer->m_player1 : layer->m_player2;
-            auto* pendingOther = state.pendingPlayer1 ? layer->m_player2 : layer->m_player1;
-            auto context = predictionContext(pendingPlayer, layer, window > 0);
-            if (!state.pending.empty() &&
-                (!dynamic::compatibleTickDuration(state.pendingTickDt, state.tickDt) ||
-                 context.dual != state.pendingDual ||
-                 (context.dual && layer->m_levelSettings &&
-                  layer->m_levelSettings->m_twoPlayerMode != state.pendingSeparateControls) ||
-                 (context.dual && predictionContext(pendingOther, layer, true).vehicle != state.pendingSecondVehicle) ||
-                 dynamic::pendingInvalidated(context, state.pendingVehicle) ||
-                 dynamic::pendingExceedsWindow(state.pendingDelay, window)))
-                flush(layer);
             while (auto event = state.pending.pop(state.tick)) forwardQueued(layer, *event, "scheduled");
             if (state.pending.empty()) {
                 state.pendingDelay = 0;
@@ -840,6 +945,10 @@ class $modify(DynamicPlayLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool replay, bool skipObjects) {
         if (!PlayLayer::init(level, replay, skipObjects)) return false;
         state = State{};
+        connectOptimizer();
+        log::info("Dynamic Optimizer: {}", optimizerCount ? "connected" : "not installed");
+        log::info("Dynamic Assist object catalog: {} IDs; native collision types remain authoritative",
+            dynamic::objectCatalogCount);
         resetState(this);
         auto size = CCDirector::sharedDirector()->getWinSize();
         auto* menu = CCMenu::create();
@@ -892,13 +1001,22 @@ class $modify(DynamicPlayLayer, PlayLayer) {
         state.activeCopies.clear();
         state.copies.clear();
         state.scratchObjects.clear();
+        state.schedulingRoots.clear();
         state.activatedPortals.clear();
         discardPending("quit");
         PlayLayer::onQuit();
     }
     void destroyPlayer(PlayerObject* player, GameObject* object) {
         if (state.simulating) {
-            if (player == state.ghost) state.simDead = true;
+            if (player == state.ghost) {
+                if (!state.simDead) {
+                    if (state.predictedDeaths++ == 0) {
+                        state.firstDeathID = object ? object->m_objectID : -1;
+                        state.firstDeathType = object ? static_cast<int>(object->m_objectType) : -1;
+                    }
+                    state.simDead = true;
+                }
+            }
             else { state.uncertain = true; state.issue = SimulationIssue::activation; }
             return;
         }

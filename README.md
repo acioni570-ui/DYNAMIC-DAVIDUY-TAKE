@@ -1,6 +1,44 @@
 <!-- coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:c0d011156c8307d519862437b78076be388cf595647551cdf5fadabb361c4843 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:1ee26132662e00f053455df7e66429924294a10e7b7c3e6286c9a9415fb2c1e0 -->
+
 # Dynamic Assist (experimental)
+
+## Descargas y configuración
+
+Consulta las [versiones publicadas](https://github.com/acioni570-ui/DYNAMIC-DAVIDUY-TAKE/releases) y la [guía de configuración y características por versión](docs/CONFIGURACION.md). El paquete 0.8.1 actualiza Assist para reutilizar las entradas del registro de portales entre candidatos de una búsqueda; conserva las versiones de los cuatro complementos del paquete 0.8.0. Los perfiles de la guía son propuestas para comparar en tu equipo, sin mediciones de FPS dentro del juego.
+
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+## Versión 0.8.0: catálogo y optimización
+
+Se incluyen **3.993 IDs**: 3.987 entradas del catálogo público [GDObjectNames](https://github.com/Alphalaneous/GDObjectNames/blob/8b74b132c55cbee6231a035c656dd1224e37a7cb/objects.csv) y seis triggers de color antiguos (29, 30, 105, 744, 900, 915) de los [bindings de GD 2.2081](https://github.com/geode-sdk/bindings/blob/b17b28de467984a31ad7994920a593a8b9d14ea3/bindings/2.2081/inline/GameObject.cpp). La tabla de bits ocupa 568 bytes, no descarga datos durante el juego y no copia los nombres del catálogo. `tools/generate_object_catalog.py` verifica el SHA256 de la fuente y permite reproducir la tabla con `--check`.
+
+**Registrar un ID identifica su presencia en el catálogo; no implementa su comportamiento.** Los sólidos, peligros y pendientes siguen enviándose al motor por su tipo nativo, incluso con IDs que no estén en la tabla. El diagnóstico añade `object_in_catalog` y `death_in_catalog`, que no son indicadores de compatibilidad. No se ha probado una colección de niveles famosos ni se afirma que se hayan enumerado todos los objetos de internet o de otros mods.
+
+La ampliación de física de esta versión es el **portal verde 2926 / GravityTogglePortal (tipo 42)**. Invierte la gravedad únicamente en el jugador oculto y utiliza el registro de activaciones del candidato para evitar invertirla en cada tick de solapamiento. Antes se consideraba una interacción desconocida. Los grupos personalizados, teletransportes y cambios futuros del mundo mantienen las limitaciones descritas abajo.
+
+| Paquete | Cambio de rendimiento |
+| --- | --- |
+| Assist 0.8.0 | La función de búsqueda recibe directamente la simulación; evita construir un `std::function` con asignación de memoria en cada búsqueda. Mantiene candidatos, horizonte, deadlines y poda. |
+| Optimizer 0.2.0 | Protocolo V2: consulta una bandera estable antes del callback de propiedad. Fuera de una predicción evita la llamada indirecta. Conserva V1 y funciona con versiones anteriores. |
+| Particles Lite 0.2.0 | Omite preparación de vértices y carga de sus buffers, además del dibujo. Conserva actualización, emisión, caducidad y limpieza de partículas. |
+| Glow Lite 0.1.2 y Particles Lite | El recorrido seguro usa memoria proporcional a la profundidad del árbol, omite candidatos nulos/duplicados y termina cuando encuentra todos. Conserva la validación que corrige el crash 0.1.0. |
+| Effects Lite 0.2.0 | También omite el efecto visual de desplazamiento de spider; mantiene su movimiento y colisión. |
+
+Las mejoras visuales pueden ocultar pistas del nivel. Los métodos de partículas están declarados en el SDK fijado; la separación entre preparación gráfica y vida de partículas se contrastó con el [código fuente de Cocos2d-x](https://github.com/cocos2d/cocos2d-x/blob/cocos2d-x-2.2.3/cocos2dx/particle_nodes/CCParticleSystemQuad.cpp). La implementación de GD puede tener modificaciones. Faltan la verificación de estos hooks dentro de GD y mediciones reales de FPS; la compilación y las pruebas independientes no sustituyen esa comprobación.
+
+Instala las versiones nuevas en `Geometry Dash/geode/mods`, reemplazando las anteriores del mismo ID. Assist puede utilizarse solo; los cuatro complementos son opcionales. Para reducir la carga empieza con horizonte 32 y amplía la ventana solo si necesitas más búsqueda. No se han reducido automáticamente tus ajustes ni el presupuesto de predicción.
+
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- coderabbit-ai-generated:v1 -->
 
@@ -28,7 +66,33 @@ Prototipo de asistencia de entrada para Geometry Dash 2.2081 en Windows con Geod
 
 <!-- coderabbit-ai-generated-section:v1:49034b9eec9697ca07f4dce717a827fb3064c97b98504c15f4a6783837968703 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:7ec8df5fc7cb621f32880c1e37bc186d6d7db2d25d2c17a78d3e29d338606048 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:245c43172edfc228355c7ca526cbb857c084735490f163c8274d16760c78f402 -->
+
+## Cambios de la versión 0.6.1
+
+- El límite compartido de predicción por fotograma pasa de 4 ms a 0 por defecto en instalaciones nuevas, para permitir más tiempo a cada búsqueda. El límite individual de 12 ms sigue activo y puede causar tirones. Geode puede conservar un valor configurado anteriormente: revisa **Prediction budget per frame (ms)** y cambia 4 a 0 si quieres quitar el límite compartido.
+- Los tipos de los objetos de interacción y sus copias privadas se comprueban una vez por objeto, en lugar de repetir esas comprobaciones en cada paso o candidato. Sus campos, posición y activaciones siguen copiándose y reiniciándose en cada candidato.
+- El resultado depende de las interacciones presentes en el nivel. No se ha medido la mejora de FPS ni la cantidad de predicciones dentro del juego.
+
+## Cambios de la versión 0.6.0
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+- Nuevo **Prediction budget per frame (ms)**: todos los clics de un fotograma comparten 4 ms de búsqueda por defecto, además del límite individual. Puede completar menos correcciones que el comportamiento anterior. Usa 0 para recuperar el presupuesto independiente por entrada. Es un límite cooperativo: una operación nativa o su limpieza puede sobrepasarlo.
+- Las teclas F6/F7 y los ajustes de interfaz se consultan una vez por fotograma renderizado. La entrega y validación de entradas pendientes conserva su frecuencia de física.
+- Se evita preparar el jugador oculto cuando otra entrada interrumpe una espera. Las copias privadas registran su pertenencia una sola vez, y los registros por clic solo se emiten con diagnóstico activado.
+- Las pruebas pueden ejecutarse sin Geode: `cmake -S . -B build-tests -DDYNAMIC_TESTS_ONLY=ON -DCMAKE_BUILD_TYPE=Release`, `cmake --build build-tests --config Release` y `ctest --test-dir build-tests -C Release --output-on-failure`. Se mantienen las aserciones también en Release.
+- El flujo **Validate and build** valida en Linux y Windows y genera el paquete Windows con el SDK indicado en `mod.json`. Falta medir FPS y estabilidad dentro de Geometry Dash. El binario v0.2.2 del repositorio no contiene estos cambios.
+
 ## Cambios de la versión 0.5.3
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Se registra también el tick real del segundo jugador. La asistencia dual exige relojes compatibles; un cambio del modo de controles invalida una entrada pendiente. El diagnóstico incluye `second_tick_dt`.
 
@@ -220,7 +284,103 @@ entre 1 y 66 ms (12 ms por defecto)
 
 <!-- /coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:96594e1ad332cec64399673a0d15c884ffd6f67e34b92fda5a6ce0113a0120bc -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:2cf99cf24fd2bbaef4886bf41d00ea4e164152c3549ca2d490670be236c4f656 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:f40c5fb8c535bc3bad8e5f47dc00357e63155c68074031703e70560f90de94cc -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:6380282e1ae1a1cac979a7205f9465ef903965be6c1331d8d67dd69600ced646 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:8ad64640f3a5d25403d08191dd8c9c5032a7494b6a7967f66566ac10a29290c4 -->
+
+## Corrección de cierre en los complementos visuales (0.1.1)
+
+El informe recibido muestra un acceso inválido en Particles Lite 0.1.0 al entrar al nivel. Esa versión trataba como válido cualquier puntero de capa no nulo; el valor que causó el fallo no apuntaba a un objeto. Glow Lite tenía la misma pauta y se corrigió también.
+
+Particles Lite y Glow Lite 0.1.1 recorren el árbol real del nivel una vez al entrar, y ocultan únicamente capas cuyos valores coinciden con nodos presentes y del tipo esperado. Las referencias inválidas se ignoran. Las capas que no se encuentren en ese árbol pueden seguir visibles; se mantiene la supresión de dibujo de partículas quad/batch. Este recorrido añade trabajo al cargar el nivel y no se realiza en cada fotograma. La corrección debe comprobarse en el juego, también con los demás mods instalados.
+
+Desinstala los archivos 0.1.0 de Particles Lite y Glow Lite antes de instalar sus versiones 0.1.1. Effects Lite permanece en 0.1.0.
+
+## Tres complementos visuales opcionales (0.1.0)
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+| Mod | Trabajo evitado | Coste o alcance |
+| --- | --- | --- |
+| Dynamic Particles Lite | Oculta los 20 batches de partículas conocidos y omite draw de sistemas quad/batch mientras hay un nivel abierto. | Desaparecen partículas, también en la pausa. La actualización, caducidad y liberación nativas siguen ejecutándose. |
+| Dynamic Glow Lite | Oculta una vez al entrar las nueve capas nativas de glow. | Desaparece el resplandor de objetos. No añade hooks por fotograma ni elimina objetos. |
+| Dynamic Effects Lite | Evita playShineEffect y playBumpEffect durante un nivel. | Desaparecen destellos y efectos de impacto. La lógica de movimiento y colisiones no cambia. |
+
+Son tres `.geode` independientes compatibles por diseño con Assist 0.7.0 y Optimizer 0.1.0. No hay que actualizar estos dos para instalarlos. Copia los nuevos archivos a `Geometry Dash/geode/mods` y reinicia; puedes instalar solo los que quieras. Cada complemento tiene **Enabled on next level entry**: los cambios se aplican al salir y volver a entrar al nivel.
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:3a65b550360892cc08d001ce90f83507ef5d485b71a2b7cbc521751895066e08 -->
+
+Los ajustes se leen al entrar. Particles y Glow recorren el árbol una vez al cargar para validar capas; los filtros no recorren el árbol ni consultan ajustes en cada fotograma.
+
+<!-- /coderabbit-ai-generated:v1 --> Los filtros de partículas y efectos usan una comprobación booleana; las capas se ocultan una sola vez. Son reducciones visuales, no aceleradores de física ni ampliaciones de compatibilidad de predicción. Pueden ocultar pistas visuales diseñadas por el creador del nivel. Otros mods o triggers que vuelvan a mostrar las capas pueden anular el ocultamiento.
+
+El beneficio depende del cuello de botella: reducir dibujo puede ayudar cuando limita la GPU; no reduce el coste de simulación de partículas ni garantiza FPS adicionales si limita la física de Dynamic. Es necesario comparar el mismo nivel y ajustes con cada complemento activado y desactivado. Esta entrega no tiene mediciones dentro de Geometry Dash ni pruebas de interacción con todos los demás mods.
+
+## Optimización 0.7.0 y mod auxiliar
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+- Dynamic Assist guarda el contexto temporal del nivel una vez por entrada y lo restaura entre candidatos, reutilizando el respaldo. Antes lo volvía a copiar en cada candidato. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:abe1d1ddc4d54e02d1bff4cb0e85ff75da47004e06cf39aba932789b29addedb -->
+
+La prueba con 65 candidatos reduce las construcciones del respaldo de 65 a 1 y las asignaciones del vector de la prueba de 130 a 2, verificando la misma restauración incluso ante excepciones. La restauración todavía copia datos; la reducción medida es de asignaciones de memoria en esa prueba.
+
+<!-- /coderabbit-ai-generated:v1 --> Esto no significa 65 veces más FPS: la física y la restauración siguen teniendo coste.
+- **Dynamic Optimizer 0.1.0** es un segundo mod opcional. Intercepta el registro de timers y lo omite únicamente para nodos privados de una predicción activa. Dynamic Assist ya eliminaba esos timers al terminar cada candidato; se evita insertarlos para eliminarlos inmediatamente después. Mantiene la limpieza de seguridad original.
+- Para usarlos juntos, instala `DynamicAssist-v0.7.0.geode` y `DynamicOptimizer-v0.1.0.geode` en `Geometry Dash/geode/mods`, reemplaza la versión anterior de Assist y reinicia el juego. Assist funciona también sin el auxiliar; el auxiliar queda inactivo sin la conexión con Assist.
+- Al entrar en un nivel, el log indica `Dynamic Optimizer: connected` o `not installed`. Con Diagnostic log activado, `optimizer=true` confirma la conexión y `skipped_timers` cuenta registros evitados durante esa búsqueda. Puede ser cero en trayectorias que no crean timers.
+- No se reducen el horizonte, las colisiones ni los candidatos por este cambio. No se añade soporte para nuevos peligros. Las mejoras de FPS y la integración con otros mods requieren mediciones dentro de GD; no se han medido en este entorno.
+
+## Cobertura 0.6.3
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+La asistencia busca evitar muertes mediante física nativa. La cobertura actual es:
+
+| Situación | Tratamiento |
+| --- | --- |
+| Sólidos, pinchos, sierras y demás tipos Hazard/AnimatedHazard | Colisiones nativas por tipo, sin lista de IDs de peligros. |
+| Pendientes, suelo y techo | Se consulta la física nativa del jugador oculto; requiere verificación dentro del juego. |
+| Vehículos, gravedad/tamaño, velocidades, orbes y pads admitidos | Transiciones y física del candidato; grupos personalizados siguen pendientes. |
+| Bloques D/H/J/S y contacto 2866 | Copias privadas y `PlayerObject::touchedObject` nativo. |
+| Fuerzas 2069/3645 | Copias privadas con los seis parámetros de fuerza; el mapa de IDs consumidos se restaura entre candidatos. |
+| Objetos movidos por triggers, teletransporte, grupos custom y lógica futura del nivel | Simulación completa pendiente. El mundo no avanza junto con el jugador oculto; no se garantiza la predicción de estos peligros. |
+
+El diagnóstico añade `predicted_deaths`, `first_death_id` y `first_death_type`: informan de muertes notificadas por el motor durante la búsqueda. La primera muerte puede pertenecer a un candidato descartado, incluso si otro candidato acaba siendo seguro. Un ID `-1` con muertes indica que el motor no entregó un objeto; con cero muertes no hubo notificación. Estos campos se distinguen de `object_id`/`object_type`, que describen una interacción incompatible.
+
+Esta ampliación no cambia los límites de tiempo ni habilita dual o plataforma adicionales. No equivale a compatibilidad universal: requiere pruebas reales de colisiones, fuerzas, dash y pendientes en GD 2.2081.
+
+## Corrección 0.6.2
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+- Los bloques especiales D (1755) y H (1859), antes marcados como incompatibles, se pasan a las colisiones nativas mediante copias privadas. El estado de deslizamiento de wave se restaura entre candidatos.
+- El diagnóstico añade `frame_budget_ms` y `deadline_us` para distinguir el límite por entrada del tiempo restante del fotograma.
+- Los triggers que cambian el mundo, los orbes personalizados y los portales de teletransporte siguen interrumpiendo la predicción. El registro identifica el primer obstáculo para simular; no demuestra por sí solo que se haya omitido un sólido.
+- Fuente: [PlayerObject::touchedObject de GD 2.2081](https://github.com/geode-sdk/bindings/blob/main/bindings/2.2081/inline/PlayerObject.cpp). La precisión de estos contactos requiere comprobarse dentro del juego.
+
 ## Limitaciones
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- coderabbit-ai-generated:v1 -->
 

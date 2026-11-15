@@ -1,7 +1,7 @@
 #pragma once
 
 namespace dynamic {
-// Copy scalar physics state that PlayerObject::copyAttributes omits. The game
+// Copy independent physics state that PlayerObject::copyAttributes omits. The game
 // supplies mode changes and held-jump state; world objects are not shared here.
 template <typename Player>
 void copyGroundAndVelocityState(Player& dst, Player const& src) {
@@ -26,11 +26,13 @@ void copyGroundAndVelocityState(Player& dst, Player const& src) {
     COPY_FIELD(m_isAccelerating); COPY_FIELD(m_fixRobotJump);
     COPY_FIELD(m_maybeIsBoosted); COPY_FIELD(m_accelerationOrSpeed);
     COPY_FIELD(m_lastGroundedPos); COPY_FIELD(m_stateHitHead);
+    COPY_FIELD(m_stateDartSlide);
     COPY_FIELD(m_stateFlipGravity); COPY_FIELD(m_stateBoostX);
     COPY_FIELD(m_stateBoostY); COPY_FIELD(m_stateForce);
     COPY_FIELD(m_stateForceVector); COPY_FIELD(m_affectedByForces);
     COPY_FIELD(m_controlsDisabled); COPY_FIELD(m_inputsLocked);
     COPY_FIELD(m_holdingButtons);
+    COPY_FIELD(m_jumpPadRelated);
     // Level/player physics options are not fields of PlayerCheckpoint. A new
     // PlayerObject has defaults that can differ from the live level's rules.
     COPY_FIELD(m_enable22Changes); COPY_FIELD(m_enableImpulseFix);

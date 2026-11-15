@@ -10,6 +10,17 @@ constexpr bool colorOnlyTrigger(int id) {
         id == 899 || id == 900 || id == 915;
 }
 
+// Audited GD 2.2081 PlayerObject::touchedObject cases. Native physics owns
+// contact counters, stopping dash and force application; use private copies.
+constexpr bool nativeForceBlock(int id) {
+    return id == 2069 || id == 3645;
+}
+template <typename Type>
+constexpr bool nativeContactBlock(Type type, int id) {
+    return type == Type::Special && (id == 1755 || id == 1813 ||
+        id == 1829 || id == 1859 || id == 2866 || nativeForceBlock(id));
+}
+
 enum class CollisionCategory { geometry, slope, decoration, unsupported };
 
 template <typename Type>

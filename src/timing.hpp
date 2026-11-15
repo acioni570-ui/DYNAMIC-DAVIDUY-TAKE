@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <type_traits>
 
 namespace dynamic {
 
@@ -49,9 +50,14 @@ struct Decision {
 
 // Only an early input can be delayed: this function cannot move an input into
 // the past. If the prediction is incomplete, forward the original input.
-inline Decision chooseDelay(std::uint8_t maxDelay,
-                            const std::function<Verdict(std::uint8_t)>& simulate) {
-    if (!simulate || maxDelay == 0) return {};
+template <typename Simulate>
+Decision chooseDelay(std::uint8_t maxDelay, Simulate&& simulate) {
+    if (maxDelay == 0) return {};
+    // Preserve empty std::function / null callback handling without forcing
+    // capturing prediction lambdas through an allocating type-erased wrapper.
+    if constexpr (std::is_constructible_v<bool, Simulate&>) {
+        if (!static_cast<bool>(simulate)) return {};
+    }
 
     auto initial = simulate(0);
     if (initial == Verdict::unknown) return {0, false, DecisionReason::unknownInitial, 1};

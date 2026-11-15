@@ -1,0 +1,19 @@
+{
+  "geode": "5.11.2",
+  "gd": {
+    "win": "2.2081"
+  },
+  "version": "v0.1.2",
+  "id": "dynamicassist.glow",
+  "name": "Dynamic Glow Lite",
+  "developer": "Dynamic Assist",
+  "description": "Hide the nine native level glow batches to reduce rendering work.",
+  "settings": {
+    "enabled": {
+      "type": "bool",
+      "name": "Enabled on next level entry",
+      "description": "Apply on the next level entry. Reduces visual effects; does not change physics or prediction limits.",
+      "default": true
+    }
+  }
+}
