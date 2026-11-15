@@ -4,7 +4,9 @@
 struct Node { Node* parent = nullptr; };
 Node root, live;
 bool simulating = false;
+unsigned callbacks = 0;
 bool owned(void* raw) {
+    ++callbacks;
     if (!simulating) return false;
     for (auto* n = static_cast<Node*>(raw); n; n = n->parent)
         if (n == &root) return true;
@@ -25,4 +27,15 @@ int main() {
     gate.connect(nullptr);
     simulating = true;
     assert(!gate.suppress(&nested));
+    gate.connect(&owned, &simulating);
+    simulating = false;
+    auto before = callbacks;
+    for (unsigned i = 0; i < 10000; ++i) assert(!gate.suppress(&nested));
+    assert(callbacks == before); // V2 never crosses the ABI outside a prediction
+    simulating = true;
+    assert(gate.suppress(&nested) && !gate.suppress(&normalChild));
+    assert(callbacks == before + 2 && gate.count() == 3);
+    gate.connect(&owned); // older Assist retains V1 behavior
+    simulating = false;
+    assert(!gate.suppress(&nested) && callbacks == before + 3);
 }

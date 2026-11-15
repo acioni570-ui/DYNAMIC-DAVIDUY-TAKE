@@ -46,6 +46,15 @@ class $modify(DynamicParticlesLevel, PlayLayer) {
 // Keep native simulation, expiry and auto-removal of particle systems. Only
 // drawing is omitted; pausing update would freeze emitters and their cleanup.
 class $modify(DynamicParticleDraw, CCParticleSystemQuad) {
+    // These methods prepare vertices and upload their buffer for draw().
+    // Keep CCParticleSystem::update running: age, emission, expiry, pooling,
+    // and auto-removal must continue even when rendering is suppressed.
+    void updateQuadWithParticle(sCCParticle* particle, CCPoint const& position) {
+        if (!session.suppress()) CCParticleSystemQuad::updateQuadWithParticle(particle, position);
+    }
+    void postStep() {
+        if (!session.suppress()) CCParticleSystemQuad::postStep();
+    }
     void draw() {
         if (!session.suppress()) CCParticleSystemQuad::draw();
     }

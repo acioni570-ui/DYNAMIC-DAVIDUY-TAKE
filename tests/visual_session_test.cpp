@@ -13,9 +13,10 @@ struct Node {
     unsigned updates = 0;
     int collisionType = 47;
     bool disabled = false;
+    unsigned traversals = 0;
     void setVisible(bool value) { visible = value; }
     void update() { ++updates; }
-    Children* getChildren() { return &children; }
+    Children* getChildren() { ++traversals; return &children; }
 };
 int main() {
     dynamic::VisualSession session;
@@ -52,6 +53,20 @@ int main() {
     assert(casts == 3); // no lookup on invalid or out-of-tree candidates
     assert(!particle.visible && !glow.visible && geometry.visible && unrelated.visible);
     assert(dynamic::hideVisualLayers<Node>(nullptr, layers, asBatch) == 0);
+    // Empty/missing pointers never need a tree walk. When the last distinct
+    // target is found, its large sprite subtree must not be visited.
+    auto traversals = root.traversals;
+    assert(dynamic::hideVisualLayers(&root, std::array<std::uintptr_t, 2>{0, 0}, asBatch) == 0);
+    assert(root.traversals == traversals);
+    auto particleTraversals = particle.traversals;
+    assert(dynamic::hideVisualLayers(&root, std::array<std::uintptr_t, 3>{
+        dynamic::visualAddress(&particleField), 0, dynamic::visualAddress(&particleField)}, asBatch) == 1);
+    assert(particle.traversals == particleTraversals);
+    // Wide batches and null children use the same safe address validation.
+    root.children.nodes.assign(10000, nullptr);
+    root.children.nodes.back() = &glow;
+    assert(dynamic::hideVisualLayers(&root, std::array<std::uintptr_t, 1>{
+        dynamic::visualAddress(&glowField)}, asBatch) == 1);
     for (auto* n : {&particle, &glow, &geometry}) {
         n->update();
         assert(n->updates == 1 && n->collisionType == 47 && !n->disabled);

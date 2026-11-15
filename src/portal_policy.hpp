@@ -1,12 +1,13 @@
 #pragma once
 
 namespace dynamic {
-enum class PortalAction { unsupported, gravityNormal, gravityInverted, regularSize, miniSize };
+enum class PortalAction { unsupported, gravityNormal, gravityInverted, gravityToggle, regularSize, miniSize };
 
 template <typename Type>
 constexpr PortalAction portalAction(Type type) {
     if (type == Type::NormalGravityPortal) return PortalAction::gravityNormal;
     if (type == Type::InverseGravityPortal) return PortalAction::gravityInverted;
+    if (type == Type::GravityTogglePortal) return PortalAction::gravityToggle;
     if (type == Type::RegularSizePortal) return PortalAction::regularSize;
     if (type == Type::MiniSizePortal) return PortalAction::miniSize;
     return PortalAction::unsupported;
@@ -18,8 +19,10 @@ template <typename Player>
 void applyPortal(Player& player, PortalAction action) {
     switch (action) {
         case PortalAction::gravityNormal:
-        case PortalAction::gravityInverted: {
-            bool inverted = action == PortalAction::gravityInverted;
+        case PortalAction::gravityInverted:
+        case PortalAction::gravityToggle: {
+            bool inverted = action == PortalAction::gravityToggle
+                ? !player.m_isUpsideDown : action == PortalAction::gravityInverted;
             if (player.m_isUpsideDown != inverted) player.flipGravity(inverted, true);
             break;
         }

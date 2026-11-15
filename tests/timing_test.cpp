@@ -11,6 +11,10 @@ int main() {
     using dynamic::chooseDelay;
     using dynamic::runPredictionSteps;
     using dynamic::validTickDuration;
+    std::function<Verdict(std::uint8_t)> empty;
+    assert(chooseDelay(4, empty).reason == DecisionReason::disabled);
+    Verdict (*nullCallback)(std::uint8_t) = nullptr;
+    assert(chooseDelay(4, nullCallback).reason == DecisionReason::disabled);
     assert(validTickDuration(1.f / 240.f));
     assert(!validTickDuration(0.f) && !validTickDuration(-1.f));
     assert(!validTickDuration(2.f) && !validTickDuration(std::numeric_limits<float>::infinity()));

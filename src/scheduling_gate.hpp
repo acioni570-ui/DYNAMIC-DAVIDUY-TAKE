@@ -4,11 +4,15 @@
 namespace dynamic {
 class SchedulingGate {
     optimizer::Predicate predicate = nullptr;
+    bool const* active = nullptr;
     std::uint64_t suppressed = 0;
 public:
-    void connect(optimizer::Predicate value) { predicate = value; }
+    void connect(optimizer::Predicate value, bool const* scope = nullptr) {
+        predicate = value;
+        active = scope;
+    }
     bool suppress(void* node) {
-        if (!predicate || !node || !predicate(node)) return false;
+        if (!predicate || !node || (active && !*active) || !predicate(node)) return false;
         ++suppressed;
         return true;
     }

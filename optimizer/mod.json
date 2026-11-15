@@ -1,7 +1,7 @@
 {
   "geode": "5.11.2",
   "gd": {"win": "2.2081"},
-  "version": "v0.1.0",
+  "version": "v0.2.0",
   "id": "dynamicassist.optimizer",
   "name": "Dynamic Optimizer",
   "developer": "Dynamic Assist",

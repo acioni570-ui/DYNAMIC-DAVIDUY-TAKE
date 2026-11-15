@@ -20,6 +20,7 @@
 #include <vector>
 #include "controls.hpp"
 #include "collision_policy.hpp"
+#include "object_catalog.hpp"
 #include "portal_policy.hpp"
 #include "interaction_policy.hpp"
 #include "scoped_restore.hpp"
@@ -154,10 +155,13 @@ void connectOptimizer() {
     if (!module) return;
     auto connect = reinterpret_cast<dynamic::optimizer::Connect>(
         GetProcAddress(module, dynamic::optimizer::connectSymbol));
+    auto connectV2 = reinterpret_cast<dynamic::optimizer::ConnectV2>(
+        GetProcAddress(module, dynamic::optimizer::connectSymbolV2));
     auto count = reinterpret_cast<dynamic::optimizer::Count>(
         GetProcAddress(module, dynamic::optimizer::countSymbol));
-    if (!connect || !count) return;
-    connect(&predictionNode);
+    if ((!connect && !connectV2) || !count) return;
+    if (connectV2) connectV2(&predictionNode, &state.simulating);
+    else connect(&predictionNode);
     optimizerCount = count;
 }
 
@@ -638,14 +642,15 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
         });
         if (diagnostics) {
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count();
-            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} frame_budget_ms={} deadline_us={} skipped_candidates={} second_tick_dt={} predicted_deaths={} first_death_id={} first_death_type={} optimizer={} skipped_timers={}",
+            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} frame_budget_ms={} deadline_us={} skipped_candidates={} second_tick_dt={} predicted_deaths={} first_death_id={} first_death_type={} optimizer={} skipped_timers={} object_in_catalog={} death_in_catalog={}",
                 down ? "press" : "release", player1, separateControls, static_cast<int>(context.vehicle), window, decisionName(decision.reason),
                 static_cast<unsigned>(decision.delay), decision.attempts, issueName(state.issue),
                 state.issueObjectID, state.issueObjectType, state.tickDt, elapsed, horizon, budget, frameLimit,
                 std::chrono::duration_cast<std::chrono::microseconds>(deadline - start).count(),
                 decision.skippedCandidates, state.secondTickDt, state.predictedDeaths,
                 state.firstDeathID, state.firstDeathType, optimizerCount != nullptr,
-                optimizerCount ? optimizerCount() - skippedTimers : 0);
+                optimizerCount ? optimizerCount() - skippedTimers : 0,
+                dynamic::knownObjectID(state.issueObjectID), dynamic::knownObjectID(state.firstDeathID));
         }
         switch (decision.reason) {
             case dynamic::DecisionReason::safeNow:
@@ -941,6 +946,8 @@ class $modify(DynamicPlayLayer, PlayLayer) {
         state = State{};
         connectOptimizer();
         log::info("Dynamic Optimizer: {}", optimizerCount ? "connected" : "not installed");
+        log::info("Dynamic Assist object catalog: {} IDs; native collision types remain authoritative",
+            dynamic::objectCatalogCount);
         resetState(this);
         auto size = CCDirector::sharedDirector()->getWinSize();
         auto* menu = CCMenu::create();

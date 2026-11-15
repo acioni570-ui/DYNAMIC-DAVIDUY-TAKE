@@ -3,11 +3,11 @@
   "gd": {
     "win": "2.2081"
   },
-  "version": "v0.1.0",
+  "version": "v0.2.0",
   "id": "dynamicassist.effects",
   "name": "Dynamic Effects Lite",
   "developer": "Dynamic Assist",
-  "description": "Skip cosmetic shine and player bump effects while a level is open.",
+  "description": "Skip cosmetic shine, player bump and spider dash effects while a level is open.",
   "settings": {
     "enabled": {
       "type": "bool",

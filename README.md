@@ -1,6 +1,33 @@
 <!-- coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:c0d011156c8307d519862437b78076be388cf595647551cdf5fadabb361c4843 -->
+
 # Dynamic Assist (experimental)
+
+## Versión 0.8.0: catálogo y optimización
+
+Se incluyen **3.993 IDs**: 3.987 entradas del catálogo público [GDObjectNames](https://github.com/Alphalaneous/GDObjectNames/blob/8b74b132c55cbee6231a035c656dd1224e37a7cb/objects.csv) y seis triggers de color antiguos (29, 30, 105, 744, 900, 915) de los [bindings de GD 2.2081](https://github.com/geode-sdk/bindings/blob/b17b28de467984a31ad7994920a593a8b9d14ea3/bindings/2.2081/inline/GameObject.cpp). La tabla de bits ocupa 568 bytes, no descarga datos durante el juego y no copia los nombres del catálogo. `tools/generate_object_catalog.py` verifica el SHA256 de la fuente y permite reproducir la tabla con `--check`.
+
+**Registrar un ID identifica su presencia en el catálogo; no implementa su comportamiento.** Los sólidos, peligros y pendientes siguen enviándose al motor por su tipo nativo, incluso con IDs que no estén en la tabla. El diagnóstico añade `object_in_catalog` y `death_in_catalog`, que no son indicadores de compatibilidad. No se ha probado una colección de niveles famosos ni se afirma que se hayan enumerado todos los objetos de internet o de otros mods.
+
+La ampliación de física de esta versión es el **portal verde 2926 / GravityTogglePortal (tipo 42)**. Invierte la gravedad únicamente en el jugador oculto y utiliza el registro de activaciones del candidato para evitar invertirla en cada tick de solapamiento. Antes se consideraba una interacción desconocida. Los grupos personalizados, teletransportes y cambios futuros del mundo mantienen las limitaciones descritas abajo.
+
+| Paquete | Cambio de rendimiento |
+| --- | --- |
+| Assist 0.8.0 | La función de búsqueda recibe directamente la simulación; evita construir un `std::function` con asignación de memoria en cada búsqueda. Mantiene candidatos, horizonte, deadlines y poda. |
+| Optimizer 0.2.0 | Protocolo V2: consulta una bandera estable antes del callback de propiedad. Fuera de una predicción evita la llamada indirecta. Conserva V1 y funciona con versiones anteriores. |
+| Particles Lite 0.2.0 | Omite preparación de vértices y carga de sus buffers, además del dibujo. Conserva actualización, emisión, caducidad y limpieza de partículas. |
+| Glow Lite 0.1.2 y Particles Lite | El recorrido seguro usa memoria proporcional a la profundidad del árbol, omite candidatos nulos/duplicados y termina cuando encuentra todos. Conserva la validación que corrige el crash 0.1.0. |
+| Effects Lite 0.2.0 | También omite el efecto visual de desplazamiento de spider; mantiene su movimiento y colisión. |
+
+Las mejoras visuales pueden ocultar pistas del nivel. Los métodos de partículas están declarados en el SDK fijado; la separación entre preparación gráfica y vida de partículas se contrastó con el [código fuente de Cocos2d-x](https://github.com/cocos2d/cocos2d-x/blob/cocos2d-x-2.2.3/cocos2dx/particle_nodes/CCParticleSystemQuad.cpp). La implementación de GD puede tener modificaciones. Faltan la verificación de estos hooks dentro de GD y mediciones reales de FPS; la compilación y las pruebas independientes no sustituyen esa comprobación.
+
+Instala las versiones nuevas en `Geometry Dash/geode/mods`, reemplazando las anteriores del mismo ID. Assist puede utilizarse solo; los cuatro complementos son opcionales. Para reducir la carga empieza con horizonte 32 y amplía la ventana solo si necesitas más búsqueda. No se han reducido automáticamente tus ajustes ni el presupuesto de predicción.
+
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- coderabbit-ai-generated:v1 -->
 

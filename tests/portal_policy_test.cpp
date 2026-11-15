@@ -2,7 +2,7 @@
 #include <cassert>
 
 enum class Type { NormalGravityPortal = 4, InverseGravityPortal = 3,
-    RegularSizePortal = 17, MiniSizePortal = 18 };
+    RegularSizePortal = 17, MiniSizePortal = 18, GravityTogglePortal = 42 };
 struct Player {
     bool m_isUpsideDown = false;
     float m_vehicleSize = 1.f;
@@ -19,7 +19,7 @@ int main() {
     Player live, ghost;
     for (int t = -1; t < 50; ++t) {
         auto a = portalAction(static_cast<Type>(t));
-        assert((a != PortalAction::unsupported) == (t == 3 || t == 4 || t == 17 || t == 18));
+        assert((a != PortalAction::unsupported) == (t == 3 || t == 4 || t == 17 || t == 18 || t == 42));
     }
     applyPortal(ghost, portalAction(Type::InverseGravityPortal));
     applyPortal(ghost, portalAction(Type::InverseGravityPortal));
@@ -33,5 +33,9 @@ int main() {
     assert(ghost.m_vehicleSize == 1.f && ghost.scales == 2);
     applyPortal(ghost, PortalAction::unsupported);
     assert(ghost.flips == 2 && ghost.scales == 2);
+    applyPortal(ghost, portalAction(Type::GravityTogglePortal));
+    assert(ghost.m_isUpsideDown && ghost.flips == 3);
+    applyPortal(ghost, portalAction(Type::GravityTogglePortal));
+    assert(!ghost.m_isUpsideDown && ghost.flips == 4);
     assert(!live.m_isUpsideDown && live.m_vehicleSize == 1.f && live.flips == 0 && live.scales == 0);
 }

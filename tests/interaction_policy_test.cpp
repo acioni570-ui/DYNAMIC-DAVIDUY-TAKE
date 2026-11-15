@@ -4,7 +4,7 @@
 #include <cassert>
 
 enum class Type { NormalGravityPortal=4, InverseGravityPortal=3, RegularSizePortal=17, MiniSizePortal=18, Modifier=20, CubePortal=6, ShipPortal=5, UfoPortal=19, BallPortal=16,
-    WavePortal=26, RobotPortal=27, SpiderPortal=33, SwingPortal=41,
+    WavePortal=26, RobotPortal=27, SpiderPortal=33, SwingPortal=41, GravityTogglePortal=42,
     YellowJumpRing=11, PinkJumpRing=12, GravityRing=13, GreenRing=29,
     RedJumpRing=35, DropRing=32, YellowJumpPad=8, PinkJumpPad=9,
     GravityPad=10, RedJumpPad=34, DashRing=37, GravityDashRing=38, SpiderOrb=43, SpiderPad=44 };
@@ -49,8 +49,8 @@ int main() {
         assert(ghost.velocity == -7.5 && ghost.gravity && ghost.size == .6f);
     }
     // Every unsupported-object pair in the user's v0.3.2 log has a route.
-    constexpr std::array<std::pair<int,int>,12> reported = {{{84,13}, {10,4}, {36,11}, {11,3},
-        {203,20}, {99,17}, {200,20}, {101,18}, {141,12}, {202,20}, {660,26}, {13,5}}};
+    constexpr std::array<std::pair<int,int>,13> reported = {{{84,13}, {10,4}, {36,11}, {11,3},
+        {203,20}, {99,17}, {200,20}, {101,18}, {141,12}, {202,20}, {660,26}, {13,5}, {2926,42}}};
     for (auto [id, value] : reported) {
         auto t = static_cast<Type>(value);
         assert(nativeOrbOrPad(t) || portalVehicle(t) != Vehicle::unknown ||

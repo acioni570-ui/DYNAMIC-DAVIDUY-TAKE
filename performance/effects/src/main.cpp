@@ -29,4 +29,7 @@ class $modify(DynamicBumpLite, PlayerObject) {
     void playBumpEffect(int type, GameObject* object) {
         if (!session.suppress()) PlayerObject::playBumpEffect(type, object);
     }
+    void playSpiderDashEffect(CCPoint from, CCPoint to) {
+        if (!session.suppress()) PlayerObject::playSpiderDashEffect(from, to);
+    }
 };
