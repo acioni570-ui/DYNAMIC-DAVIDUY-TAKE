@@ -28,7 +28,21 @@ Prototipo de asistencia de entrada para Geometry Dash 2.2081 en Windows con Geod
 
 <!-- coderabbit-ai-generated-section:v1:49034b9eec9697ca07f4dce717a827fb3064c97b98504c15f4a6783837968703 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:7ec8df5fc7cb621f32880c1e37bc186d6d7db2d25d2c17a78d3e29d338606048 -->
+
+## Cambios de la versión 0.6.0
+
+- Nuevo **Prediction budget per frame (ms)**: todos los clics de un fotograma comparten 4 ms de búsqueda por defecto, además del límite individual. Puede completar menos correcciones que el comportamiento anterior. Usa 0 para recuperar el presupuesto independiente por entrada. Es un límite cooperativo: una operación nativa o su limpieza puede sobrepasarlo.
+- Las teclas F6/F7 y los ajustes de interfaz se consultan una vez por fotograma renderizado. La entrega y validación de entradas pendientes conserva su frecuencia de física.
+- Se evita preparar el jugador oculto cuando otra entrada interrumpe una espera. Las copias privadas registran su pertenencia una sola vez, y los registros por clic solo se emiten con diagnóstico activado.
+- Las pruebas pueden ejecutarse sin Geode: `cmake -S . -B build-tests -DDYNAMIC_TESTS_ONLY=ON -DCMAKE_BUILD_TYPE=Release`, `cmake --build build-tests --config Release` y `ctest --test-dir build-tests -C Release --output-on-failure`. Se mantienen las aserciones también en Release.
+- El flujo **Validate and build** valida en Linux y Windows y genera el paquete Windows con el SDK indicado en `mod.json`. Falta medir FPS y estabilidad dentro de Geometry Dash. El binario v0.2.2 del repositorio no contiene estos cambios.
+
 ## Cambios de la versión 0.5.3
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Se registra también el tick real del segundo jugador. La asistencia dual exige relojes compatibles; un cambio del modo de controles invalida una entrada pendiente. El diagnóstico incluye `second_tick_dt`.
 

@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -28,6 +29,7 @@
 #include "physics_snapshot.hpp"
 #include "simulation_safety.hpp"
 #include "scratch_buffers.hpp"
+#include "frame_budget.hpp"
 
 using namespace geode::prelude;
 namespace {
@@ -86,6 +88,8 @@ struct State {
     std::unordered_set<GameObject*> activatedPortals;
     std::uint64_t generation = 0;
     Ref<PlayerCheckpoint> checkpoint;
+    dynamic::FrameBudget<Clock> frameBudget;
+    std::optional<unsigned> controlsFrame;
     bool simulating = false;
     bool creatingGhost = false;
     bool simDead = false;
@@ -128,6 +132,7 @@ void updateControls() {
     if (state.controls) state.controls->setVisible(visible);
     if (state.status) {
         state.status->setVisible(visible);
+        if (!visible) return;
         auto text = fmt::format("Assist: {} | {} ticks (F6/F7)\nCorrecciones: {} | ticks: {} | ultimo: {}\n{}",
             window ? "ON" : "OFF", window, state.stats.corrected,
             state.stats.delayedTicks, state.stats.lastDelay, state.lastResult);
@@ -263,11 +268,13 @@ GameObject* interactionCopy(GameObject* original) {
         entry.object = GameObject::createWithKey(original->m_objectID);
         // Native PlayerObject has raw contact/dash pointers. Keep the targets
         // alive until its destructor finishes, even after the cache is cleared.
-        if (entry.object) owners->addObject(entry.object.data());
+        if (entry.object) {
+            owners->addObject(entry.object.data());
+            state.scratchObjects.insert(entry.object.data());
+        }
     }
     auto* copy = entry.object.data();
     if (!copy) return nullptr;
-    state.scratchObjects.insert(copy);
     if (entry.generation == state.generation) return copy;
     dynamic::stopPredictionNode<CCNode>(copy);
     state.activeCopies.push_back(copy);
@@ -495,25 +502,32 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             state.deliveredDown = down;
             return GJBaseGameLayer::handleButton(down, buttonId, player1);
         }
-        auto start = Clock::now();
-        auto budget = dynamic::clampBudget(Mod::get()->getSettingValue<int64_t>("budget"));
-        auto deadline = start + std::chrono::milliseconds(budget);
-        auto horizon = dynamic::clampHorizon(Mod::get()->getSettingValue<int64_t>("horizon"));
-        ensureGhost(layer);
-        if (!state.ghost) {
-            if (diagnostics) log::info("[Dynamic Assist diagnostic] input ignored: ghost-unavailable");
-            flush(layer);
-            showResult("Sin prediccion: ghost-unavailable");
-            state.deliveredDown = down;
-            return GJBaseGameLayer::handleButton(down, buttonId, player1);
-        }
         if (!state.pending.empty()) {
             // The prediction assumed the previous button state persists. A new
             // input invalidates it, so stop waiting and preserve event order.
             flush(layer);
-            log::info("Dynamic Assist: ended the planned delay on new input");
             if (diagnostics) log::info("[Dynamic Assist diagnostic] pending delay interrupted by another input");
             showResult("Entrada interrumpida por nuevo clic");
+            state.deliveredDown = down;
+            return GJBaseGameLayer::handleButton(down, buttonId, player1);
+        }
+        auto budget = dynamic::clampBudget(Mod::get()->getSettingValue<int64_t>("budget"));
+        auto frameLimit = std::clamp<int64_t>(Mod::get()->getSettingValue<int64_t>("frame-budget"), 0, 66);
+        auto prediction = state.frameBudget.start(CCDirector::sharedDirector()->getTotalFrames(),
+            std::chrono::milliseconds(budget), std::chrono::milliseconds(frameLimit));
+        auto start = prediction.started();
+        auto deadline = prediction.deadline();
+        if (start >= deadline) {
+            if (diagnostics) log::info("[Dynamic Assist diagnostic] input unchanged: frame-budget exhausted");
+            showResult("Presupuesto del fotograma agotado");
+            state.deliveredDown = down;
+            return GJBaseGameLayer::handleButton(down, buttonId, player1);
+        }
+        auto horizon = dynamic::clampHorizon(Mod::get()->getSettingValue<int64_t>("horizon"));
+        ensureGhost(layer);
+        if (!state.ghost) {
+            if (diagnostics) log::info("[Dynamic Assist diagnostic] input ignored: ghost-unavailable");
+            showResult("Sin prediccion: ghost-unavailable");
             state.deliveredDown = down;
             return GJBaseGameLayer::handleButton(down, buttonId, player1);
         }
@@ -590,7 +604,7 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             state.pendingSeparateControls = separateControls;
             state.pendingSecondVehicle = context.dual
                 ? predictionContext(otherPlayer, layer, true).vehicle : dynamic::Vehicle::unknown;
-            log::info("Dynamic Assist: planned delay {} tick(s)", static_cast<unsigned>(decision.delay));
+            if (diagnostics) log::info("Dynamic Assist: planned delay {} tick(s)", static_cast<unsigned>(decision.delay));
             return;
         }
         state.deliveredDown = down;
@@ -726,32 +740,37 @@ class $modify(DynamicPlayer, PlayerObject) {
         PlayerObject::toggleGhostEffect(type);
     }
     void update(float dt) {
-        auto* layer = PlayLayer::get();
+        auto* layer = state.simulating ? nullptr : PlayLayer::get();
         if (!state.simulating && layer && layer == state.layer && this == layer->m_player2)
             state.secondTickDt = dynamic::validTickDuration(dt) ? dt : 0.f;
         if (!state.simulating && layer && layer == state.layer && this == layer->m_player1) {
             ++state.tick;
             state.tickDt = dynamic::validTickDuration(dt) ? dt : 0.f;
-            DWORD foregroundProcess = 0;
-            auto* foreground = GetForegroundWindow();
-            if (foreground) GetWindowThreadProcessId(foreground, &foregroundProcess);
-            bool focused = foregroundProcess == GetCurrentProcessId();
-            bool pressed = focused && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
-            if (pressed && !state.f6Down) {
-                auto next = dynamic::nextWindow(Mod::get()->getSettingValue<int64_t>("window"));
-                setWindow(layer, next);
-                log::info("Dynamic Assist window: {} ticks", next);
+            auto frame = CCDirector::sharedDirector()->getTotalFrames();
+            if (!state.controlsFrame || *state.controlsFrame != frame) {
+                state.controlsFrame = frame;
+                DWORD foregroundProcess = 0;
+                auto* foreground = GetForegroundWindow();
+                if (foreground) GetWindowThreadProcessId(foreground, &foregroundProcess);
+                bool focused = foregroundProcess == GetCurrentProcessId();
+                bool pressed = focused && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
+                if (pressed && !state.f6Down) {
+                    auto next = dynamic::nextWindow(Mod::get()->getSettingValue<int64_t>("window"));
+                    setWindow(layer, next);
+                    log::info("Dynamic Assist window: {} ticks", next);
+                }
+                state.f6Down = pressed;
+                bool toggle = focused && (GetAsyncKeyState(VK_F7) & 0x8000) != 0;
+                if (toggle && !state.f7Down) {
+                    setWindow(layer, dynamic::toggleWindow(Mod::get()->getSettingValue<int64_t>("window"), state.lastWindow));
+                }
+                state.f7Down = toggle;
+                auto displayedWindow = dynamic::clampWindow(Mod::get()->getSettingValue<int64_t>("window"));
+                if (state.displayedWindow != displayedWindow) state.lastResult = "Esperando clic";
+                if (state.displayedWindow != displayedWindow ||
+                    state.displayedControls != Mod::get()->getSettingValue<bool>("show-controls")) updateControls();
             }
-            state.f6Down = pressed;
-            bool toggle = focused && (GetAsyncKeyState(VK_F7) & 0x8000) != 0;
-            if (toggle && !state.f7Down) {
-                setWindow(layer, dynamic::toggleWindow(Mod::get()->getSettingValue<int64_t>("window"), state.lastWindow));
-            }
-            state.f7Down = toggle;
-            auto displayedWindow = dynamic::clampWindow(Mod::get()->getSettingValue<int64_t>("window"));
-            if (state.displayedWindow != displayedWindow) state.lastResult = "Esperando clic";
-            if (state.displayedWindow != displayedWindow ||
-                state.displayedControls != Mod::get()->getSettingValue<bool>("show-controls")) updateControls();
+            auto displayedWindow = state.displayedWindow;
             if (!state.pending.empty()) {
                 auto* pendingPlayer = state.pendingPlayer1 ? layer->m_player1 : layer->m_player2;
                 auto* pendingOther = state.pendingPlayer1 ? layer->m_player2 : layer->m_player1;

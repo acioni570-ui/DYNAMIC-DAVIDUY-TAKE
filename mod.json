@@ -3,7 +3,7 @@
   "gd": {
     "win": "2.2081"
   },
-  "version": "v0.5.3",
+  "version": "v0.6.0",
   "id": "dynamicassist.practice",
   "name": "Dynamic Assist",
   "developer": "Dynamic Assist",
@@ -44,6 +44,14 @@
       "default": 32,
       "min": 32,
       "max": 256
+    },
+    "frame-budget": {
+      "type": "int",
+      "name": "Prediction budget per frame (ms)",
+      "description": "Shared CPU search budget across inputs in one rendered frame. 0 disables this cap. Smaller values reduce stalls but can complete fewer predictions. Native operations and cleanup can exceed the deadline.",
+      "default": 4,
+      "min": 0,
+      "max": 66
     }
   }
 }
