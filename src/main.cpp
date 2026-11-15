@@ -21,6 +21,7 @@
 #include "controls.hpp"
 #include "collision_policy.hpp"
 #include "object_catalog.hpp"
+#include "activation_cache.hpp"
 #include "portal_policy.hpp"
 #include "interaction_policy.hpp"
 #include "scoped_restore.hpp"
@@ -96,7 +97,7 @@ struct State {
     std::unordered_set<CCNode*> schedulingRoots;
     std::vector<GameObject*> activeCopies;
     dynamic::ScratchBuffers<gd::vector<GameObject*>> collisionBuffers;
-    std::unordered_set<GameObject*> activatedPortals;
+    std::unordered_map<GameObject*, std::uint64_t> activatedPortals;
     std::uint64_t generation = 0;
     Ref<PlayerCheckpoint> checkpoint;
     dynamic::FrameBudget<Clock> frameBudget;
@@ -441,7 +442,6 @@ dynamic::Verdict simulate(PlayLayer* layer, PlayerObject* player, PlayerCheckpoi
     state.simDead = false;
     state.uncertain = false;
     ++state.generation;
-    state.activatedPortals.clear();
     // Use the game's practice checkpoint restore, including all vehicle flags,
     // velocities, slope data, held input and ring bookkeeping. The old partial
     // copy left state from the previous candidate on the hidden player.
@@ -627,6 +627,7 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
         state.predictedDeaths = 0;
         state.firstDeathID = -1;
         state.firstDeathType = -1;
+        state.activatedPortals.clear();
         auto contextSnapshot = snapshotGameContext(layer->m_gameState);
         auto decision = dynamic::chooseDelay(static_cast<std::uint8_t>(window), [&](std::uint8_t delay) {
             auto verdict = simulate(layer, player, state.checkpoint.data(), down, true, delay, horizon, deadline, contextSnapshot);
@@ -748,7 +749,7 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
                 bool overlaps = object->m_objectRadius > 0.f
                     ? GJBaseGameLayer::playerCircleCollision(player, object)
                     : object->getObjectRect().intersectsRect(player->getObjectRect());
-                if (overlaps && state.activatedPortals.insert(object).second) {
+                if (overlaps && dynamic::firstActivation(state.activatedPortals, object, state.generation)) {
                     dynamic::applyPortal(*player, portal);
                     player->m_lastPortalPos = object->getPosition();
                     player->m_lastActivatedPortal = object;

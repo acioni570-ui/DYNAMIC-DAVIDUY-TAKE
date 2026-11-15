@@ -4,7 +4,18 @@
 
 <!-- coderabbit-ai-generated-section:v1:c0d011156c8307d519862437b78076be388cf595647551cdf5fadabb361c4843 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:1ee26132662e00f053455df7e66429924294a10e7b7c3e6286c9a9415fb2c1e0 -->
+
 # Dynamic Assist (experimental)
+
+## Descargas y configuración
+
+Consulta las [versiones publicadas](https://github.com/acioni570-ui/DYNAMIC-DAVIDUY-TAKE/releases) y la [guía de configuración y características por versión](docs/CONFIGURACION.md). El paquete 0.8.1 actualiza Assist para reutilizar las entradas del registro de portales entre candidatos de una búsqueda; conserva las versiones de los cuatro complementos del paquete 0.8.0. Los perfiles de la guía son propuestas para comparar en tu equipo, sin mediciones de FPS dentro del juego.
+
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## Versión 0.8.0: catálogo y optimización
 
