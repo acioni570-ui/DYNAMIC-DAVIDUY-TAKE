@@ -32,6 +32,7 @@
 #include "frame_budget.hpp"
 #include "object_types.hpp"
 #include "force_parameters.hpp"
+#include "optimizer_api.hpp"
 
 using namespace geode::prelude;
 namespace {
@@ -91,6 +92,7 @@ struct State {
     };
     std::unordered_map<GameObject*, ObjectCopy> copies;
     std::unordered_set<GameObject*> scratchObjects;
+    std::unordered_set<CCNode*> schedulingRoots;
     std::vector<GameObject*> activeCopies;
     dynamic::ScratchBuffers<gd::vector<GameObject*>> collisionBuffers;
     std::unordered_set<GameObject*> activatedPortals;
@@ -133,6 +135,32 @@ struct State {
     dynamic::InputQueue pending;
     dynamic::Vehicle pendingVehicle = dynamic::Vehicle::unknown;
 } state;
+
+// Geode keeps loaded mod binaries resident. Resolve once when entering a level;
+// absent or older companions leave all baseline cleanup and physics intact.
+dynamic::optimizer::Count optimizerCount = nullptr;
+bool predictionNode(void* raw) {
+    if (!state.simulating) return false;
+    auto* node = typeinfo_cast<CCNode*>(static_cast<CCObject*>(raw));
+    for (auto* current = node; current; current = current->getParent()) {
+        if (current == state.holder ||
+            state.schedulingRoots.contains(current)) return true;
+    }
+    return false;
+}
+void connectOptimizer() {
+    optimizerCount = nullptr;
+    auto module = GetModuleHandleW(L"dynamicassist.optimizer.dll");
+    if (!module) return;
+    auto connect = reinterpret_cast<dynamic::optimizer::Connect>(
+        GetProcAddress(module, dynamic::optimizer::connectSymbol));
+    auto count = reinterpret_cast<dynamic::optimizer::Count>(
+        GetProcAddress(module, dynamic::optimizer::countSymbol));
+    if (!connect || !count) return;
+    connect(&predictionNode);
+    optimizerCount = count;
+}
+
 
 void updateControls() {
     auto window = dynamic::clampWindow(Mod::get()->getSettingValue<int64_t>("window"));
@@ -291,6 +319,7 @@ GameObject* interactionCopy(GameObject* original, State::ObjectCopy& entry) {
         if (entry.object) {
             owners->addObject(entry.object.data());
             state.scratchObjects.insert(entry.object.data());
+            state.schedulingRoots.insert(entry.object.data());
             entry.copyTypes = inspectObjectTypes(entry.object.data());
         }
     }
@@ -373,16 +402,8 @@ void button(PlayerObject* p, bool down) {
     else p->releaseButton(PlayerButton::Jump);
 }
 
-dynamic::Verdict simulate(PlayLayer* layer, PlayerObject* player, PlayerCheckpoint* checkpoint, bool down, bool applyInput, unsigned delay, unsigned horizon,
-                          Clock::time_point deadline) {
-    auto* ghost = state.ghost;
-    state.issue = SimulationIssue::none;
-    state.issueObjectID = -1;
-    state.issueObjectType = -1;
-    if (!ghost || !player) { state.issue = SimulationIssue::missingPlayer; return dynamic::Verdict::unknown; }
-    if (state.tickDt <= 0) { state.issue = SimulationIssue::noTick; return dynamic::Verdict::unknown; }
-    if (Clock::now() >= deadline) { state.issue = SimulationIssue::deadline; return dynamic::Verdict::unknown; }
-    dynamic::ScopedRestore gameContext(layer->m_gameState,
+auto snapshotGameContext(GJGameState& context) {
+    return dynamic::StateSnapshot(context,
         &GJGameState::m_lastActivatedPortal1, &GJGameState::m_lastActivatedPortal2,
         &GJGameState::m_portalY, &GJGameState::m_gravityRelated,
         &GJGameState::m_playerStreakBlend, &GJGameState::m_isFreeMode,
@@ -392,6 +413,19 @@ dynamic::Verdict simulate(PlayLayer* layer, PlayerObject* player, PlayerCheckpoi
         &GJGameState::m_lastModeHeight, &GJGameState::m_cameraPosition,
         &GJGameState::m_cameraLastPosition, &GJGameState::m_cameraOffset,
         &GJGameState::m_activatedObjectIDs, &GJGameState::m_stateObjects);
+}
+
+template <typename Context>
+dynamic::Verdict simulate(PlayLayer* layer, PlayerObject* player, PlayerCheckpoint* checkpoint, bool down, bool applyInput, unsigned delay, unsigned horizon,
+                          Clock::time_point deadline, Context const& context) {
+    auto* ghost = state.ghost;
+    state.issue = SimulationIssue::none;
+    state.issueObjectID = -1;
+    state.issueObjectType = -1;
+    if (!ghost || !player) { state.issue = SimulationIssue::missingPlayer; return dynamic::Verdict::unknown; }
+    if (state.tickDt <= 0) { state.issue = SimulationIssue::noTick; return dynamic::Verdict::unknown; }
+    if (Clock::now() >= deadline) { state.issue = SimulationIssue::deadline; return dynamic::Verdict::unknown; }
+    auto gameContextGuard = context.guard();
     // Native restores/mode changes may schedule visual work after the call
     // returns. Stop it on every exit, while the simulation flag is still set.
     dynamic::PredictionScope simulationGuard(state.simulating, [] {
@@ -585,13 +619,15 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
             }
             otherPlayer->saveToCheckpoint(secondCheckpoint.data());
         }
+        auto skippedTimers = diagnostics && optimizerCount ? optimizerCount() : 0;
         state.predictedDeaths = 0;
         state.firstDeathID = -1;
         state.firstDeathType = -1;
+        auto contextSnapshot = snapshotGameContext(layer->m_gameState);
         auto decision = dynamic::chooseDelay(static_cast<std::uint8_t>(window), [&](std::uint8_t delay) {
-            auto verdict = simulate(layer, player, state.checkpoint.data(), down, true, delay, horizon, deadline);
+            auto verdict = simulate(layer, player, state.checkpoint.data(), down, true, delay, horizon, deadline, contextSnapshot);
             if (verdict == dynamic::Verdict::safe && context.dual) {
-                verdict = simulate(layer, otherPlayer, secondCheckpoint.data(), down, !separateControls, delay, horizon, deadline);
+                verdict = simulate(layer, otherPlayer, secondCheckpoint.data(), down, !separateControls, delay, horizon, deadline, contextSnapshot);
             }
             // Include native setup and scoped cleanup in the same deadline.
             if (Clock::now() >= deadline) {
@@ -602,13 +638,14 @@ class $modify(DynamicGameLayer, GJBaseGameLayer) {
         });
         if (diagnostics) {
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count();
-            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} frame_budget_ms={} deadline_us={} skipped_candidates={} second_tick_dt={} predicted_deaths={} first_death_id={} first_death_type={}",
+            log::info("[Dynamic Assist diagnostic] input={} player1={} separate_controls={} mode={} window={} result={} delay={} attempts={} issue={} object_id={} object_type={} tick_dt={} elapsed_us={} horizon={} budget_ms={} frame_budget_ms={} deadline_us={} skipped_candidates={} second_tick_dt={} predicted_deaths={} first_death_id={} first_death_type={} optimizer={} skipped_timers={}",
                 down ? "press" : "release", player1, separateControls, static_cast<int>(context.vehicle), window, decisionName(decision.reason),
                 static_cast<unsigned>(decision.delay), decision.attempts, issueName(state.issue),
                 state.issueObjectID, state.issueObjectType, state.tickDt, elapsed, horizon, budget, frameLimit,
                 std::chrono::duration_cast<std::chrono::microseconds>(deadline - start).count(),
                 decision.skippedCandidates, state.secondTickDt, state.predictedDeaths,
-                state.firstDeathID, state.firstDeathType);
+                state.firstDeathID, state.firstDeathType, optimizerCount != nullptr,
+                optimizerCount ? optimizerCount() - skippedTimers : 0);
         }
         switch (decision.reason) {
             case dynamic::DecisionReason::safeNow:
@@ -902,6 +939,8 @@ class $modify(DynamicPlayLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool replay, bool skipObjects) {
         if (!PlayLayer::init(level, replay, skipObjects)) return false;
         state = State{};
+        connectOptimizer();
+        log::info("Dynamic Optimizer: {}", optimizerCount ? "connected" : "not installed");
         resetState(this);
         auto size = CCDirector::sharedDirector()->getWinSize();
         auto* menu = CCMenu::create();
@@ -954,6 +993,7 @@ class $modify(DynamicPlayLayer, PlayLayer) {
         state.activeCopies.clear();
         state.copies.clear();
         state.scratchObjects.clear();
+        state.schedulingRoots.clear();
         state.activatedPortals.clear();
         discardPending("quit");
         PlayLayer::onQuit();

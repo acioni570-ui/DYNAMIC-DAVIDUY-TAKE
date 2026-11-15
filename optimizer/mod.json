@@ -1,0 +1,9 @@
+{
+  "geode": "5.11.2",
+  "gd": {"win": "2.2081"},
+  "version": "v0.1.0",
+  "id": "dynamicassist.optimizer",
+  "name": "Dynamic Optimizer",
+  "developer": "Dynamic Assist",
+  "description": "Optional companion that avoids scheduling timers on Dynamic Assist's private prediction nodes. Does not change live physics."
+}

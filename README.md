@@ -254,7 +254,27 @@ entre 1 y 66 ms (12 ms por defecto)
 
 <!-- coderabbit-ai-generated-section:v1:2cf99cf24fd2bbaef4886bf41d00ea4e164152c3549ca2d490670be236c4f656 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:f40c5fb8c535bc3bad8e5f47dc00357e63155c68074031703e70560f90de94cc -->
+
+## Optimización 0.7.0 y mod auxiliar
+
+- Dynamic Assist guarda el contexto temporal del nivel una vez por entrada y lo restaura entre candidatos, reutilizando el respaldo. Antes lo volvía a copiar en cada candidato. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:abe1d1ddc4d54e02d1bff4cb0e85ff75da47004e06cf39aba932789b29addedb -->
+
+La prueba con 65 candidatos reduce las construcciones del respaldo de 65 a 1 y las asignaciones del vector de la prueba de 130 a 2, verificando la misma restauración incluso ante excepciones. La restauración todavía copia datos; la reducción medida es de asignaciones de memoria en esa prueba.
+
+<!-- /coderabbit-ai-generated:v1 --> Esto no significa 65 veces más FPS: la física y la restauración siguen teniendo coste.
+- **Dynamic Optimizer 0.1.0** es un segundo mod opcional. Intercepta el registro de timers y lo omite únicamente para nodos privados de una predicción activa. Dynamic Assist ya eliminaba esos timers al terminar cada candidato; se evita insertarlos para eliminarlos inmediatamente después. Mantiene la limpieza de seguridad original.
+- Para usarlos juntos, instala `DynamicAssist-v0.7.0.geode` y `DynamicOptimizer-v0.1.0.geode` en `Geometry Dash/geode/mods`, reemplaza la versión anterior de Assist y reinicia el juego. Assist funciona también sin el auxiliar; el auxiliar queda inactivo sin la conexión con Assist.
+- Al entrar en un nivel, el log indica `Dynamic Optimizer: connected` o `not installed`. Con Diagnostic log activado, `optimizer=true` confirma la conexión y `skipped_timers` cuenta registros evitados durante esa búsqueda. Puede ser cero en trayectorias que no crean timers.
+- No se reducen el horizonte, las colisiones ni los candidatos por este cambio. No se añade soporte para nuevos peligros. Las mejoras de FPS y la integración con otros mods requieren mediciones dentro de GD; no se han medido en este entorno.
+
 ## Cobertura 0.6.3
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 La asistencia busca evitar muertes mediante física nativa. La cobertura actual es:
 

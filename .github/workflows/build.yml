@@ -17,6 +17,13 @@ jobs:
       - run: cmake --build build-tests --config Release
       - run: ctest --test-dir build-tests -C Release --output-on-failure
   windows:
+    strategy:
+      matrix:
+        include:
+          - path: .
+            artifact: DynamicAssist-Windows
+          - path: optimizer
+            artifact: DynamicOptimizer-Windows
     needs: tests
     runs-on: windows-latest
     steps:
@@ -24,11 +31,12 @@ jobs:
       - uses: geode-sdk/build-geode-mod@61a56c697aea9655e3f31c6c1b83870431f30434
         id: build
         with:
+          path: ${{ matrix.path }}
           sdk: given
           target: Win64
           build-config: Release
       - uses: actions/upload-artifact@v4
         with:
-          name: DynamicAssist-Windows
-          path: build/*.geode
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}/build/*.geode
           if-no-files-found: error
