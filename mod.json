@@ -1,0 +1,49 @@
+{
+  "geode": "5.11.2",
+  "gd": {
+    "win": "2.2081"
+  },
+  "version": "v0.5.3",
+  "id": "dynamicassist.practice",
+  "name": "Dynamic Assist",
+  "developer": "Dynamic Assist",
+  "description": "Experimental predictive input assistance for standard game modes.",
+  "settings": {
+    "window": {
+      "type": "int",
+      "name": "Maximum delay (ticks)",
+      "description": "Maximum delay for an early input. Set to 0 for unmodified input.",
+      "default": 0,
+      "min": 0,
+      "max": 64
+    },
+    "diagnostics": {
+      "type": "bool",
+      "name": "Diagnostic log",
+      "description": "Record why clicks were or were not adjusted in the local Geode log. Turn off after testing.",
+      "default": false
+    },
+    "budget": {
+      "type": "int",
+      "name": "Prediction time budget (ms)",
+      "description": "Maximum time spent searching per input. Higher values can cause frame drops; uncertain predictions pass through unchanged.",
+      "default": 12,
+      "min": 1,
+      "max": 66
+    },
+    "show-controls": {
+      "type": "bool",
+      "name": "Show in-level controls",
+      "description": "Show the assistance controls and statistics during a level.",
+      "default": true
+    },
+    "horizon": {
+      "type": "int",
+      "name": "Prediction lookahead (ticks)",
+      "description": "Steps simulated after each candidate input, from 32 to 256. Longer lookahead costs more CPU and assumes no further clicks. It does not guarantee safety beyond the simulated world.",
+      "default": 32,
+      "min": 32,
+      "max": 256
+    }
+  }
+}
